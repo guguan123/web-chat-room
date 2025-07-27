@@ -57,10 +57,8 @@
         const messageInput = document.getElementById('message-input');
         const usernameInput = document.getElementById('username');
 
-        // *** 减慢轮询速度：将刷新间隔从 2000ms 调整到 10000ms (10秒) ***
         setInterval(fetchMessages, 10000); // 每10秒获取一次消息
 
-        // 页面加载时立即获取消息
         window.onload = fetchMessages;
 
         async function fetchMessages() {
@@ -70,25 +68,23 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const messagesText = await response.text();
-                chatWindow.innerHTML = ''; // 清空旧消息
+                chatWindow.innerHTML = '';
                 const messages = messagesText.trim().split('\n').filter(line => line.length > 0);
                 messages.forEach(messageLine => {
-                    // 更新消息解析，现在消息格式是 timestamp::ip::username::message
-                    const parts = messageLine.split('::');
+                    // *** 关键改动：使用 '@@@' 作为分隔符 ***
+                    const parts = messageLine.split('@@@');
                     if (parts.length >= 4) {
                         const timestamp = parts[0];
                         const ip = parts[1]; // IP 地址
                         const username = parts[2];
-                        const message = parts.slice(3).join('::'); // 消息内容可能包含 ::
+                        const message = parts.slice(3).join('@@@'); // 消息内容可能包含 @@@
                         const messageElement = document.createElement('div');
                         messageElement.classList.add('message');
-                        // 在前端不显示IP地址，但可以在控制台查看或者用于后端日志分析
                         messageElement.innerHTML = `<strong>${escapeHtml(username)}</strong>: ${escapeHtml(message)} <span class="timestamp">${timestamp}</span>`;
-                        // console.log(`Message from ${ip}: ${message}`); // 如果需要调试可以在这里打印IP
                         chatWindow.appendChild(messageElement);
                     }
                 });
-                chatWindow.scrollTop = chatWindow.scrollHeight; // 滚动到底部
+                chatWindow.scrollTop = chatWindow.scrollHeight;
             } catch (error) {
                 console.error('获取消息失败:', error);
             }
@@ -119,8 +115,8 @@
                 }
                 const result = await response.text();
                 console.log('消息发送结果:', result);
-                messageInput.value = ''; // 清空输入框
-                fetchMessages(); // 发送成功后立即刷新消息
+                messageInput.value = '';
+                fetchMessages();
             } catch (error) {
                 console.error('发送消息失败:', error);
             }
