@@ -4,8 +4,6 @@
 JQ_BIN="$(dirname "$0")/jq"
 # 消息长度限制
 MAX_MESSAGE_LENGTH=1024
-# 时区设置
-CUSTOM_TIMEZONE="Asia/Shanghai"
 # 旧消息最大保存条数
 MAX_MESSAGES=200
 # 信息记录文件路径
@@ -46,7 +44,10 @@ if [[ -z "$USER_IP" ]]; then
 	USER_IP="UNKNOWN_IP"
 fi
 
-TIMESTAMP=$(TZ="$CUSTOM_TIMEZONE" date +"%Y-%m-%d %H:%M:%S")
+# 使用 date -u (UTC) 和 +%Y-%m-%dT%H:%M:%S%:z (RFC 3339) 来获取带有时区信息的标准时间
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S%:z")
+# Alpine Linux的date不支持%:z，强行设置一个时区
+#TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%S")Z"
 
 CLEAN_USERNAME=$(echo "$username" | tr '\n' ' ' | head -n 1)
 CLEAN_MESSAGE=$(echo "$message" | tr '\n' ' ' | head -n 1)

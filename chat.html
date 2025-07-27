@@ -118,7 +118,12 @@
 						const messageElement = document.createElement('div');
 						messageElement.classList.add('message');
 						messageElement.id = `msg-${msg.id}`; // 给消息元素设置ID，方便查找和管理
-						messageElement.innerHTML = `<strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.message)} <span class="timestamp">${msg.timestamp}</span>`;
+						
+						// 将RFC 3339时间字符串转换为用户本地时间
+						const date = new Date(msg.timestamp);
+						const localTime = date.toLocaleString(); // 自动转换为用户本地时区格式
+
+						messageElement.innerHTML = `<strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.message)} <span class="timestamp">${localTime}</span>`;
 						chatWindow.appendChild(messageElement);
 						displayedMessageIds.add(msg.id); // 将新消息ID添加到Set中
 					}
@@ -127,10 +132,6 @@
 				if (shouldScroll) {
 					chatWindow.scrollTop = chatWindow.scrollHeight; // 滚动到底部
 				}
-
-				// 可选：如果消息数量超过MAX_MESSAGES，前端也应该清理旧消息DOM
-				// 但由于后端已经处理了消息数量，这里通常不是必须的，除非你想严格控制前端DOM数量。
-				// 如果需要，可以比较 displayedMessageIds.size 和 messages.length，移除多余的旧DOM元素。
 
 			} catch (error) {
 				console.error('获取消息失败:', error);
