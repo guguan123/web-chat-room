@@ -83,10 +83,11 @@
 		<button onclick="sendMessage()">发送</button>
 	</div>
 
-	<script>
+<script>
 		const chatWindow = document.getElementById('chat-window');
 		const messageInput = document.getElementById('message-input');
 		const usernameInput = document.getElementById('username');
+		const sendButton = document.querySelector('.input-form button'); // 获取发送按钮
 
 		setInterval(fetchMessages, 5000); // 每5秒获取一次消息
 
@@ -121,6 +122,11 @@
 				return;
 			}
 
+			// 禁用输入框和发送按钮
+			messageInput.disabled = true;
+			sendButton.disabled = true;
+			sendButton.textContent = '发送中...'; // 可以在按钮上显示加载状态
+
 			const formData = new URLSearchParams();
 			formData.append('username', username);
 			formData.append('message', message);
@@ -143,6 +149,12 @@
 				fetchMessages(); // 发送成功后刷新消息
 			} catch (error) {
 				console.error('发送消息失败:', error);
+			} finally {
+				// 无论成功或失败，最后都重新启用输入框和发送按钮
+				messageInput.disabled = false;
+				sendButton.disabled = false;
+				sendButton.textContent = '发送'; // 恢复按钮文本
+				messageInput.focus(); // 将焦点重新设置回输入框，方便用户继续输入
 			}
 		}
 
