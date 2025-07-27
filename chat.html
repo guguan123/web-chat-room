@@ -3,43 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>在线聊天室</title>
+    <title>Bash CGI 聊天室</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        #chat-box { border: 1px solid #ccc; height: 400px; overflow-y: auto; padding: 10px; margin-bottom: 10px; }
-        #chat-form { display: flex; gap: 10px; }
-        input[type="text"] { flex: 1; padding: 5px; }
-        input[type="submit"] { padding: 5px 10px; }
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; }
+        #chat-window {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 400px;
+            overflow-y: scroll;
+            margin-bottom: 10px;
+            background-color: #fff;
+            border-radius: 5px;
+        }
+        .message { margin-bottom: 8px; }
+        .timestamp { font-size: 0.8em; color: #888; margin-left: 10px; }
+        input[type="text"] {
+            width: calc(100% - 100px);
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            width: 90px;
+            padding: 8px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+        #username-input { margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <h1>在线聊天室</h1>
-    <div id="chat-box"></div>
-    <form id="chat-form" action="./cgi-bin/send_message.sh" method="post">
-        <input type="text" name="username" placeholder="用户名" required>
-        <input type="text" name="message" placeholder="输入消息" required>
-        <input type="submit" value="发送">
-    </form>
+    <h1>Bash CGI 聊天室</h1>
+
+    <div id="username-input">
+        <label for="username">你的名字:</label>
+        <input type="text" id="username" placeholder="输入你的名字" value="匿名">
+    </div>
+
+    <div id="chat-window">
+        </div>
+
+    <div>
+        <input type="text" id="message-input" placeholder="输入消息...">
+        <button onclick="sendMessage()">发送</button>
+    </div>
 
     <script>
-        function fetchMessages() {
-            fetch('./cgi-bin/get_messages.sh')
-                .then(response => response.text())
-                .then(data => {
-                    const chatBox = document.getElementById('chat-box');
-                    chatBox.innerHTML = data.replace(/\n/g, '<br>');
-                    chatBox.scrollTop = chatBox.scrollHeight;
-                })
-                .catch(error => console.error('获取消息失败:', error));
+        const chatWindow = document.getElementById('chat-window');
+        const messageInput = document.getElementById('message-input');
+        const usernameInput = document.getElementById('username');
+
+        // 定时刷新消息
+        setInterval(fetchMessages, 2000); // 每2秒获取一次消息
+
+        // 页面加载时立即获取消息
+        window.onload = fetchMessages;
+
+        async function fetchMessages() {
+            try {
+                const response = await fetch('/cgi-bin/get_messages.sh');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const messagesText = await response.text();
+                // 清空旧消息，然后添加新消息
+                chatWindow.innerHTML = '';
+                const messages = messagesText.trim().split('\n').filter(line => line.length > 0);
+                messages.forEach(messageLine => {
+                    const parts = messageLine.split('::'); // 使用 :: 作为分隔符
+                    if (parts.length >= 3) {
+                        const timestamp = parts[0];
+                        const username = parts[1];
+                        const message = parts.slice(2).join('::'); // 消息内容可能包含 ::
+                        const messageElement = document.createElement('div');
+                        messageElement.classList.add('message');
+                        messageElement.innerHTML = `<strong>${username}</strong>: ${escapeHtml(message)} <span class="timestamp">${timestamp}</span>`;
+                        chatWindow.appendChild(messageElement);
+                    }
+                });
+                chatWindow.scrollTop = chatWindow.scrollHeight; // 滚动到底部
+            } catch (error) {
+                console.error('获取消息失败:', error);
+            }
         }
 
-        // 每秒轮询获取新消息
-        setInterval(fetchMessages, 1000);
-        fetchMessages(); // 页面加载时立即获取消息
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            const username = usernameInput.value.trim() || '匿名'; // 如果用户名为空，则使用“匿名”
+            if (message === '') {
+                return;
+            }
 
-        // 表单提交后清空输入框
-        document.getElementById('chat-form').addEventListener('submit', function() {
-            document.querySelector('input[name="message"]').value = '';
+            const formData = new URLSearchParams();
+            formData.append('username', username);
+            formData.append('message', message);
+
+            try {
+                const response = await fetch('/cgi-bin/post_message.sh', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData.toString()
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const result = await response.text();
+                console.log('消息发送结果:', result);
+                messageInput.value = ''; // 清空输入框
+                fetchMessages(); // 发送成功后立即刷新消息
+            } catch (error) {
+                console.error('发送消息失败:', error);
+            }
+        }
+
+        // 辅助函数，用于防止XSS攻击
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        // 允许按Enter键发送消息
+        messageInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
         });
     </script>
 </body>

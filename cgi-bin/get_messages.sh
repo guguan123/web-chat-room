@@ -1,14 +1,15 @@
 #!/bin/bash
-# CGI脚本：获取消息
+
+# 设置CGI头部
 echo "Content-type: text/plain"
-echo ""
+echo "" # 空行分隔头部和内容
 
-# 消息文件路径
-MESSAGE_FILE="/var/localhost/htdocs/messages.txt"
+MESSAGES_FILE="/tmp/chat_messages.txt" # 聊天消息存储文件
 
-# 读取并输出消息
-if [ -f "$MESSAGE_FILE" ]; then
-    cat "$MESSAGE_FILE"
+# 检查文件是否存在并可读
+if [[ -f "$MESSAGES_FILE" ]]; then
+    # 限制只显示最后50条消息，避免文件过大影响性能
+    tail -n 50 "$MESSAGES_FILE"
 else
-    echo "暂无消息"
+    echo "" # 如果文件不存在，则不输出任何内容
 fi
