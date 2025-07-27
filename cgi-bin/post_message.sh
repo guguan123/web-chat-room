@@ -45,8 +45,8 @@ TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
 CLEAN_USERNAME=$(echo "$username" | tr '\n' ' ' | head -n 1)
 CLEAN_MESSAGE=$(echo "$message" | tr '\n' ' ' | head -n 1)
 
-# **新功能：消息长度限制**
-MAX_MESSAGE_LENGTH=512
+# 消息长度限制
+MAX_MESSAGE_LENGTH=1024
 if [[ ${#CLEAN_MESSAGE} -gt $MAX_MESSAGE_LENGTH ]]; then
     # 可以选择截断或者返回错误
     CLEAN_MESSAGE=$(echo "$CLEAN_MESSAGE" | cut -c 1-$MAX_MESSAGE_LENGTH)
@@ -55,7 +55,6 @@ fi
 
 
 if [[ -n "$CLEAN_MESSAGE" ]]; then
-	# **新功能：生成唯一ID**
 	# 使用时间戳和随机数生成唯一ID
 	MESSAGE_ID="msg_$(date +%s%N)_$RANDOM"
 
@@ -89,7 +88,7 @@ else
 	echo "Error: Message is empty."
 fi
 
-# **新功能：清理旧消息 (保留最新MAX_MESSAGES条)**
+# 新功能：清理旧消息 (保留最新MAX_MESSAGES条)
 MAX_MESSAGES=200
 if [[ -f "$MESSAGES_FILE" ]]; then
     CURRENT_MESSAGES=$(cat "$MESSAGES_FILE" | "$JQ_BIN" 'length')

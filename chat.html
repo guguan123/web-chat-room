@@ -131,28 +131,10 @@
 		}
 
 		async function sendMessage() {
-			const message = messageInput.value.trim();
+			let message = messageInput.value.trim();
 			const username = usernameInput.value.trim() || 'anonymous';
 
-			// **新功能：前端消息长度限制和分割**
-			const MAX_FRONTEND_MESSAGE_LENGTH = 512; // 与后端保持一致
-			if (message.length > MAX_FRONTEND_MESSAGE_LENGTH) {
-				// 简单的截断，如果需要复杂分割（如多条发送），需要更复杂的逻辑
-				consol.log(`消息长度超过 ${MAX_FRONTEND_MESSAGE_LENGTH} 字节，将被截断。`);
-				// 如果需要多条发送，这里可以循环调用 sendMessage()
-				// 例如：
-				// const chunks = [];
-				// for (let i = 0; i < message.length; i += MAX_FRONTEND_MESSAGE_LENGTH) {
-				//     chunks.push(message.substring(i, i + MAX_FRONTEND_MESSAGE_LENGTH));
-				// }
-				// for (const chunk of chunks) {
-				//     await sendSingleMessage(username, chunk); // 假设有一个辅助函数
-				// }
-				// return;
-				// 目前按您的要求，直接截断
-				message = message.substring(0, MAX_FRONTEND_MESSAGE_LENGTH);
-			}
-
+			const MAX_FRONTEND_MESSAGE_LENGTH = 512;
 
 			if (message === '') {
 				return;
@@ -162,26 +144,35 @@
 			sendButton.disabled = true;
 			sendButton.textContent = '发送中...';
 
-			const formData = new URLSearchParams();
-			formData.append('username', username);
-			formData.append('message', message);
+			const messagesToSend = [];
+			while (message.length > 0) {
+				messagesToSend.push(message.substring(0, MAX_FRONTEND_MESSAGE_LENGTH));
+				message = message.substring(MAX_FRONTEND_MESSAGE_LENGTH);
+			}
 
 			try {
-				const response = await fetch('./cgi-bin/post_message.sh', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/x-www-form-urlencoded'
-					},
-					body: formData.toString()
-				});
+				for (const part of messagesToSend) {
+					const formData = new URLSearchParams();
+					formData.append('username', username);
+					formData.append('message', part); // Send each part
 
-				if (!response.ok) {
-					throw new Error(`HTTP error! status: ${response.status}`);
+					const response = await fetch('./cgi-bin/post_message.sh', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/x-www-form-urlencoded'
+						},
+						body: formData.toString()
+					});
+
+					if (!response.ok) {
+						throw new Error(`HTTP error! status: ${response.status}`);
+					}
+					const result = await response.text();
+					console.log('消息发送结果:', result);
 				}
-				const result = await response.text();
-				console.log('消息发送结果:', result);
+
 				messageInput.value = '';
-				fetchMessages(); // 发送成功后刷新消息
+				fetchMessages(); // Refresh messages after all parts are sent
 			} catch (error) {
 				console.error('发送消息失败:', error);
 			} finally {
