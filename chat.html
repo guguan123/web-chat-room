@@ -21,7 +21,7 @@
 			margin-bottom: 20px;
 		}
 
-		#username-input {
+		#username-input, #notification-setting {
 			margin-bottom: 10px;
 		}
 
@@ -72,6 +72,11 @@
 		<input type="text" id="username" placeholder="输入你的名字" value="anonymous">
 	</div>
 
+	<div id="notification-setting">
+		<input type="checkbox" id="enable-notifications">
+		<label for="enable-notifications">开启新消息通知 (仅在后台生效)</label>
+	</div>
+
 	<div id="chat-window">
 	</div>
 
@@ -85,14 +90,21 @@
 		const messageInput = document.getElementById('message-input');
 		const usernameInput = document.getElementById('username');
 		const sendButton = document.querySelector('.input-form button');
+		const enableNotificationsCheckbox = document.getElementById('enable-notifications'); // 获取新添加的复选框
 
 		// 存储当前聊天窗口中已显示消息的ID，用于避免重复添加
 		const displayedMessageIds = new Set();
+		let currentNotifications = []; // 存储当前活动的通知实例，以便在需要时关闭
 
-		// 页面加载时尝试从 localStorage 读取用户名
+		// 页面加载时尝试从 localStorage 读取用户名和通知设置
 		const savedUsername = localStorage.getItem('chatUsername');
 		if (savedUsername) {
 			usernameInput.value = savedUsername;
+		}
+
+		const savedNotificationSetting = localStorage.getItem('enableNotifications');
+		if (savedNotificationSetting === 'true') {
+			enableNotificationsCheckbox.checked = true;
 		}
 
 		setInterval(fetchMessages, 5000);
@@ -106,6 +118,7 @@
 				}
 				const messages = await response.json();
 				let shouldScroll = false; // 标记是否需要滚动
+				let newMessagesCount = 0; // 记录新消息数量
 
 				// 检查当前滚动位置，如果用户在底部，则新消息进来后需要滚动
 				if (chatWindow.scrollHeight - chatWindow.scrollTop <= chatWindow.clientHeight + 50) { // 加一点容错值
@@ -126,6 +139,7 @@
 						messageElement.innerHTML = `<strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.message)} <span class="timestamp">${localTime}</span>`;
 						chatWindow.appendChild(messageElement);
 						displayedMessageIds.add(msg.id); // 将新消息ID添加到Set中
+						newMessagesCount++; // 有新消息
 					}
 				});
 
@@ -133,9 +147,39 @@
 					chatWindow.scrollTop = chatWindow.scrollHeight; // 滚动到底部
 				}
 
+				// 如果有新消息且页面处于后台，并且用户开启了通知
+				if (newMessagesCount > 0 && document.hidden && enableNotificationsCheckbox.checked) {
+					showNotification(newMessagesCount);
+				}
+
 			} catch (error) {
 				console.error('获取消息失败:', error);
 			}
+		}
+
+		// 显示通知
+		function showNotification(newMessagesCount) {
+			if (Notification.permission === 'granted') {
+				const title = '新消息';
+				const options = {
+					body: `您有 ${newMessagesCount} 条新消息`,
+					icon: 'https://www.google.com/s2/favicons?domain=guguan.us.kg' // 可以替换为你的网站图标
+				};
+				const notification = new Notification(title, options);
+				currentNotifications.push(notification); // 存储通知实例
+				// 在通知关闭时从列表中移除
+				notification.onclose = () => {
+					currentNotifications = currentNotifications.filter(n => n !== notification);
+				};
+			}
+		}
+
+		// 关闭所有当前活动的通知
+		function closeAllNotifications() {
+			currentNotifications.forEach(notification => {
+				notification.close();
+			});
+			currentNotifications = []; // 清空数组
 		}
 
 		async function sendMessage() {
@@ -209,6 +253,43 @@
 		// 监听 username 输入框的变化，实时保存用户名
 		usernameInput.addEventListener('input', function() {
 			localStorage.setItem('chatUsername', usernameInput.value.trim());
+		});
+
+		// 监听通知复选框的变化
+		enableNotificationsCheckbox.addEventListener('change', function() {
+			if (this.checked) {
+				// 如果用户勾选了，请求通知权限
+				if ('Notification' in window) {
+					Notification.requestPermission().then(permission => {
+						if (permission === 'granted') {
+							localStorage.setItem('enableNotifications', 'true');
+							console.log('通知权限已授予');
+						} else {
+							this.checked = false; // 如果用户拒绝，取消勾选
+							localStorage.setItem('enableNotifications', 'false');
+							alert('您已拒绝通知权限，无法接收新消息通知。');
+						}
+					});
+				} else {
+					alert('您的浏览器不支持桌面通知。');
+					this.checked = false;
+					localStorage.setItem('enableNotifications', 'false');
+				}
+			} else {
+				// 如果用户取消勾选，则禁用通知
+				localStorage.setItem('enableNotifications', 'false');
+				console.log('新消息通知已禁用');
+				closeAllNotifications(); // 用户关闭通知功能时，也尝试关闭已显示的通知
+			}
+		});
+
+		// 页面可见性改变时
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden) {
+				// 页面从后台切换到前台时
+				console.log('页面可见，清除通知');
+				closeAllNotifications(); // 尝试关闭所有通过此页面创建的通知
+			}
 		});
 	</script>
 </body>
