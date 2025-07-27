@@ -6,64 +6,60 @@
 	<title>聊天室</title>
 	<style>
 		body {
-			margin: 0; /* 将body的margin设置为0，以便更好地控制整体布局*/
-			display: flex; /* 使用Flexbox布局*/
-			flex-direction: column; /* 垂直方向排列子元素*/
-			height: 100vh; /* 设置body高度为视口高度，确保聊天窗口能撑开*/
-			padding: 20px; /* 页面内容与边缘的间距*/
-			box-sizing: border-box; /* 边距和内边距包含在元素的总宽度和高度内*/
+			margin: 0;
+			display: flex;
+			flex-direction: column;
+			height: 100vh;
+			padding: 20px;
+			box-sizing: border-box;
 		}
 
 		h1 {
-			margin-top: 0; /* 移除标题的顶部外边距*/
-			margin-bottom: 20px; /* 增加标题底部外边距*/
+			margin-top: 0;
+			margin-bottom: 20px;
 		}
 
 		#username-input {
-			margin-bottom: 10px; /* 用户名输入框的底部间距*/
+			margin-bottom: 10px;
 		}
 
-		/* 聊天窗口的核心样式：边框、内边距、溢出滚动，高度自适应*/
 		#chat-window {
-			border: 1px solid #ccc; /* 灰色边框*/
-			padding: 10px; /* 内边距*/
-			flex-grow: 1; /* 允许聊天窗口占据所有可用空间*/
-			overflow-y: scroll; /* 垂直滚动条*/
-			margin-bottom: 10px; /* 底部间距*/
-			background-color: #fff; /* 白色背景，保持可读性*/
+			border: 1px solid #ccc;
+			padding: 10px;
+			flex-grow: 1;
+			overflow-y: scroll;
+			margin-bottom: 10px;
+			background-color: #fff;
 		}
 
-		/* 聊天消息的间距*/
 		.message {
-			margin-bottom: 8px; /* 每条消息之间的间距*/
+			margin-bottom: 8px;
 		}
 
-		/* 时间戳样式：小字体和灰色，弱化显示*/
 		.timestamp {
-			font-size: 0.8em; /* 字体小一点*/
-			color: #888; /* 灰色*/
-			margin-left: 10px; /* 与消息内容的间距*/
+			font-size: 0.8em;
+			color: #888;
+			margin-left: 10px;
 		}
 
-		/* 输入框和按钮：移除大部分样式，保留必要的宽度调整*/
 		.input-form {
-			display: flex; /* 使用Flexbox布局*/
-			width: 100%; /* 宽度占满父容器*/
+			display: flex;
+			width: 100%;
 		}
 
 		.input-form input[type="text"] {
-			flex-grow: 1; /* 输入框占据所有可用空间*/
-			padding: 8px; /* 内边距*/
-			border: 1px solid #ccc; /* 边框*/
-			margin-right: 10px; /* 与按钮的间距*/
+			flex-grow: 1;
+			padding: 8px;
+			border: 1px solid #ccc;
+			margin-right: 10px;
 		}
 
 		.input-form button {
-			padding: 8px 15px; /* 内边距*/
-			background-color: #007bff; /* 蓝色背景*/
-			color: white; /* 白色文字*/
-			border: none; /* 无边框*/
-			cursor: pointer; /* 鼠标指针样式*/
+			padding: 8px 15px;
+			background-color: #007bff;
+			color: white;
+			border: none;
+			cursor: pointer;
 		}
 	</style>
 </head>
@@ -76,7 +72,7 @@
 	</div>
 
 	<div id="chat-window">
-		</div>
+	</div>
 
 	<div class="input-form">
 		<input type="text" id="message-input" placeholder="输入消息...">
@@ -87,11 +83,13 @@
 		const chatWindow = document.getElementById('chat-window');
 		const messageInput = document.getElementById('message-input');
 		const usernameInput = document.getElementById('username');
-		const sendButton = document.querySelector('.input-form button'); // 获取发送按钮
+		const sendButton = document.querySelector('.input-form button');
 
-		setInterval(fetchMessages, 5000); // 每5秒获取一次消息
+		// 存储当前聊天窗口中已显示消息的ID，用于避免重复添加
+		const displayedMessageIds = new Set();
 
-		window.onload = fetchMessages; // 页面加载时获取一次消息
+		setInterval(fetchMessages, 5000);
+		window.onload = fetchMessages;
 
 		async function fetchMessages() {
 			try {
@@ -100,16 +98,33 @@
 					throw new Error(`HTTP error! status: ${response.status}`);
 				}
 				const messages = await response.json();
-				chatWindow.innerHTML = ''; // 清空聊天窗口
+				let shouldScroll = false; // 标记是否需要滚动
+
+				// 检查当前滚动位置，如果用户在底部，则新消息进来后需要滚动
+				if (chatWindow.scrollHeight - chatWindow.scrollTop <= chatWindow.clientHeight + 50) { // 加一点容错值
+					shouldScroll = true;
+				}
+
 				messages.forEach(msg => {
-					if (msg.timestamp && msg.ip && msg.username && msg.message) {
+					// 只有当消息包含必需字段且其ID尚未显示时才添加
+					if (msg.id && msg.timestamp && msg.ip && msg.username && msg.message && !displayedMessageIds.has(msg.id)) {
 						const messageElement = document.createElement('div');
 						messageElement.classList.add('message');
+						messageElement.id = `msg-${msg.id}`; // 给消息元素设置ID，方便查找和管理
 						messageElement.innerHTML = `<strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.message)} <span class="timestamp">${msg.timestamp}</span>`;
 						chatWindow.appendChild(messageElement);
+						displayedMessageIds.add(msg.id); // 将新消息ID添加到Set中
 					}
 				});
-				chatWindow.scrollTop = chatWindow.scrollHeight; // 滚动到底部
+
+				if (shouldScroll) {
+					chatWindow.scrollTop = chatWindow.scrollHeight; // 滚动到底部
+				}
+
+				// 可选：如果消息数量超过MAX_MESSAGES，前端也应该清理旧消息DOM
+				// 但由于后端已经处理了消息数量，这里通常不是必须的，除非你想严格控制前端DOM数量。
+				// 如果需要，可以比较 displayedMessageIds.size 和 messages.length，移除多余的旧DOM元素。
+
 			} catch (error) {
 				console.error('获取消息失败:', error);
 			}
@@ -118,14 +133,34 @@
 		async function sendMessage() {
 			const message = messageInput.value.trim();
 			const username = usernameInput.value.trim() || 'anonymous';
+
+			// **新功能：前端消息长度限制和分割**
+			const MAX_FRONTEND_MESSAGE_LENGTH = 512; // 与后端保持一致
+			if (message.length > MAX_FRONTEND_MESSAGE_LENGTH) {
+				// 简单的截断，如果需要复杂分割（如多条发送），需要更复杂的逻辑
+				consol.log(`消息长度超过 ${MAX_FRONTEND_MESSAGE_LENGTH} 字节，将被截断。`);
+				// 如果需要多条发送，这里可以循环调用 sendMessage()
+				// 例如：
+				// const chunks = [];
+				// for (let i = 0; i < message.length; i += MAX_FRONTEND_MESSAGE_LENGTH) {
+				//     chunks.push(message.substring(i, i + MAX_FRONTEND_MESSAGE_LENGTH));
+				// }
+				// for (const chunk of chunks) {
+				//     await sendSingleMessage(username, chunk); // 假设有一个辅助函数
+				// }
+				// return;
+				// 目前按您的要求，直接截断
+				message = message.substring(0, MAX_FRONTEND_MESSAGE_LENGTH);
+			}
+
+
 			if (message === '') {
 				return;
 			}
 
-			// 禁用输入框和发送按钮
 			messageInput.disabled = true;
 			sendButton.disabled = true;
-			sendButton.textContent = '发送中...'; // 可以在按钮上显示加载状态
+			sendButton.textContent = '发送中...';
 
 			const formData = new URLSearchParams();
 			formData.append('username', username);
@@ -145,16 +180,15 @@
 				}
 				const result = await response.text();
 				console.log('消息发送结果:', result);
-				messageInput.value = ''; // 清空输入框
+				messageInput.value = '';
 				fetchMessages(); // 发送成功后刷新消息
 			} catch (error) {
 				console.error('发送消息失败:', error);
 			} finally {
-				// 无论成功或失败，最后都重新启用输入框和发送按钮
 				messageInput.disabled = false;
 				sendButton.disabled = false;
-				sendButton.textContent = '发送'; // 恢复按钮文本
-				messageInput.focus(); // 将焦点重新设置回输入框，方便用户继续输入
+				sendButton.textContent = '发送';
+				messageInput.focus();
 			}
 		}
 

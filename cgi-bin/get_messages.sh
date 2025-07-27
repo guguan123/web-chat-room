@@ -11,12 +11,8 @@ MESSAGES_FILE="/tmp/chat_messages.json"
 
 # 检查文件是否存在并可读
 if [[ -f "$MESSAGES_FILE" ]]; then
-	# 限制只显示最后 50 条消息
-	# 将文件内容通过管道传递给 jq，让 jq 作为一个整体处理 JSON 行
-	# -s 选项将所有输入合并为一个数组
-	# .[] 遍历数组中的每个元素
-	# 如果文件是多行JSON，jq -s . 就能直接将所有行读取成一个JSON数组
-	"$JQ_BIN" -s '.' <(tail -n 50 "$MESSAGES_FILE")
+    # 读取整个 JSON 文件并使用 jq 输出，可以限制只显示最后 50 条消息
+    cat "$MESSAGES_FILE" | "$JQ_BIN" '.[-50:]'
 else
 	# 如果文件不存在，输出空 JSON 数组
 	echo "[]"

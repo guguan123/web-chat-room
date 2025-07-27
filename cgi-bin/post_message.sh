@@ -9,7 +9,10 @@ echo "" # 空行分隔头部和内容
 
 MESSAGES_FILE="/tmp/chat_messages.json"
 
-touch "$MESSAGES_FILE"
+# 确保文件存在且权限正确，初始化为[]如果不存在
+if [[ ! -f "$MESSAGES_FILE" || ! -s "$MESSAGES_FILE" ]]; then
+    echo "[]" > "$MESSAGES_FILE"
+fi
 chmod 660 "$MESSAGES_FILE" # 确保权限正确
 
 read -r QUERY_STRING
@@ -22,7 +25,7 @@ for i in "${ADDR[@]}"; do
 	KEY=$(echo "$i" | cut -d'=' -f1)
 	VALUE=$(echo "$i" | cut -d'=' -f2-)
 	
-	# URL解码 (这部分不变，因为是处理URL编码的POST数据)
+	# URL解码
 	DECODED_VALUE=$(echo "$VALUE" | sed -r 's/%(..)/\\x\1/g' | xargs -0 printf "%b")
 
 	case "$KEY" in
@@ -42,22 +45,43 @@ TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
 CLEAN_USERNAME=$(echo "$username" | tr '\n' ' ' | head -n 1)
 CLEAN_MESSAGE=$(echo "$message" | tr '\n' ' ' | head -n 1)
 
+# **新功能：消息长度限制**
+MAX_MESSAGE_LENGTH=512
+if [[ ${#CLEAN_MESSAGE} -gt $MAX_MESSAGE_LENGTH ]]; then
+    # 可以选择截断或者返回错误
+    CLEAN_MESSAGE=$(echo "$CLEAN_MESSAGE" | cut -c 1-$MAX_MESSAGE_LENGTH)
+    echo "Warning: Message truncated to $MAX_MESSAGE_LENGTH characters."
+fi
+
+
 if [[ -n "$CLEAN_MESSAGE" ]]; then
-	# *** 关键改动：使用 jq 构建 JSON 对象 ***
-	# 将键值对通过 echo 传递给 jq，让 jq 构造 JSON
-	# 使用 -c 选项确保输出为紧凑的单行 JSON
-	json_object=$(
+	# **新功能：生成唯一ID**
+	# 使用时间戳和随机数生成唯一ID
+	MESSAGE_ID="msg_$(date +%s%N)_$RANDOM"
+
+	# 构建新的消息 JSON 对象
+	json_new_message=$(
 		echo "{}" | "$JQ_BIN" \
+			--arg id "$MESSAGE_ID" \
 			--arg ts "$TIMESTAMP" \
 			--arg ip "$USER_IP" \
 			--arg uname "$CLEAN_USERNAME" \
 			--arg msg "$CLEAN_MESSAGE" \
-			'. + {timestamp: $ts, ip: $ip, username: $uname, message: $msg}' | tr -d '\n'
+			'. + {id: $id, timestamp: $ts, ip: $ip, username: $uname, message: $msg}' | tr -d '\n'
 	)
 
-	if [[ -n "$json_object" ]]; then
-		echo "$json_object" >> "$MESSAGES_FILE"
-		echo "OK: Message posted."
+	if [[ -n "$json_new_message" ]]; then
+		# 读取现有消息数组，追加新消息，然后写回
+		if [[ -f "$MESSAGES_FILE" ]]; then
+			temp_file=$(mktemp)
+			# 使用 jq 将新对象追加到现有数组中
+			"$JQ_BIN" ". + [$json_new_message]" "$MESSAGES_FILE" > "$temp_file" && mv "$temp_file" "$MESSAGES_FILE"
+			echo "OK: Message posted."
+		else
+			# 如果文件不存在，则创建包含新消息的数组
+			echo "[$json_new_message]" > "$MESSAGES_FILE"
+			echo "OK: Message posted (new file created)."
+		fi
 	else
 		echo "Error: Failed to create JSON object with jq."
 	fi
@@ -65,10 +89,14 @@ else
 	echo "Error: Message is empty."
 fi
 
+# **新功能：清理旧消息 (保留最新MAX_MESSAGES条)**
 MAX_MESSAGES=200
-CURRENT_LINES=$(wc -l < "$MESSAGES_FILE")
-
-if (( CURRENT_LINES > MAX_MESSAGES )); then
-	tail -n "$MAX_MESSAGES" "$MESSAGES_FILE" > "${MESSAGES_FILE}.tmp" && mv "${MESSAGES_FILE}.tmp" "$MESSAGES_FILE"
-	echo "Cleaned old messages."
+if [[ -f "$MESSAGES_FILE" ]]; then
+    CURRENT_MESSAGES=$(cat "$MESSAGES_FILE" | "$JQ_BIN" 'length')
+    if (( CURRENT_MESSAGES > MAX_MESSAGES )); then
+        temp_file=$(mktemp)
+        # 截取数组的最后 MAX_MESSAGES 条
+        cat "$MESSAGES_FILE" | "$JQ_BIN" ".[-($MAX_MESSAGES):]" > "$temp_file" && mv "$temp_file" "$MESSAGES_FILE"
+        echo "Cleaned old messages."
+    fi
 fi
