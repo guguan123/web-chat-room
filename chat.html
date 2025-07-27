@@ -3,51 +3,60 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bash CGI 聊天室</title>
+    <title>聊天室</title>
     <style>
-        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; }
+        /* 保留基础的 body 样式，去除花哨的背景和字体 */
+        body {
+            margin: 20px; /* 页面内容与边缘的间距 */
+            /* 移除 font-family, background-color 让浏览器默认 */
+        }
+
+        /* 聊天窗口的核心样式：边框、内边距、固定高度、溢出滚动 */
         #chat-window {
-            border: 1px solid #ccc;
-            padding: 10px;
-            height: 400px;
-            overflow-y: scroll;
+            border: 1px solid #ccc; /* 灰色边框 */
+            padding: 10px; /* 内边距 */
+            height: 400px; /* 固定高度 */
+            overflow-y: scroll; /* 垂直滚动条 */
+            margin-bottom: 10px; /* 底部间距 */
+            background-color: #fff; /* 白色背景，保持可读性 */
+        }
+
+        /* 聊天消息的间距 */
+        .message {
+            margin-bottom: 8px; /* 每条消息之间的间距 */
+            /* 移除其他样式，保持文字基础样式 */
+        }
+
+        /* 时间戳样式：小字体和灰色，弱化显示 */
+        .timestamp {
+            font-size: 0.8em; /* 字体小一点 */
+            color: #888; /* 灰色 */
+            margin-left: 10px; /* 与消息内容的间距 */
+        }
+
+        /* 输入框和按钮：移除大部分样式，保留必要的宽度调整 */
+        .input-form input[type="text"] {
+            width: calc(100% - 100px); /* 宽度占满父容器减去按钮宽度 */
+        }
+
+        /* 用户名输入框的底部间距 */
+        #username-input {
             margin-bottom: 10px;
-            background-color: #fff;
-            border-radius: 5px;
         }
-        .message { margin-bottom: 8px; }
-        .timestamp { font-size: 0.8em; color: #888; margin-left: 10px; }
-        input[type="text"] {
-            width: calc(100% - 100px);
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        button {
-            width: 90px;
-            padding: 8px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        button:hover { background-color: #0056b3; }
-        #username-input { margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <h1>Bash CGI 聊天室</h1>
+    <h1>聊天室</h1>
 
     <div id="username-input">
         <label for="username">你的名字:</label>
-        <input type="text" id="username" placeholder="输入你的名字" value="匿名">
+        <input type="text" id="username" placeholder="输入你的名字" value="anonymous">
     </div>
 
     <div id="chat-window">
         </div>
 
-    <div>
+    <div class="input-form">
         <input type="text" id="message-input" placeholder="输入消息...">
         <button onclick="sendMessage()">发送</button>
     </div>
@@ -57,7 +66,7 @@
         const messageInput = document.getElementById('message-input');
         const usernameInput = document.getElementById('username');
 
-        setInterval(fetchMessages, 10000); // 每10秒获取一次消息
+        setInterval(fetchMessages, 5000); // 每5秒获取一次消息
 
         window.onload = fetchMessages;
 
@@ -67,11 +76,9 @@
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                // *** 关键改动：预期 JSON 格式响应 ***
-                const messages = await response.json(); // 直接解析 JSON 数组
+                const messages = await response.json();
                 chatWindow.innerHTML = '';
                 messages.forEach(msg => {
-                    // 确保数据结构正确
                     if (msg.timestamp && msg.ip && msg.username && msg.message) {
                         const messageElement = document.createElement('div');
                         messageElement.classList.add('message');
@@ -87,7 +94,7 @@
 
         async function sendMessage() {
             const message = messageInput.value.trim();
-            const username = usernameInput.value.trim() || '匿名';
+            const username = usernameInput.value.trim() || 'anonymous';
             if (message === '') {
                 return;
             }
