@@ -2,12 +2,18 @@
 
 # 定义 jq 可执行文件的路径
 JQ_BIN="$(dirname "$0")/jq"
+# 消息长度限制
+MAX_MESSAGE_LENGTH=1024
+# 时区设置
+CUSTOM_TIMEZONE="Asia/Shanghai"
+# 旧消息最大保存条数
+MAX_MESSAGES=200
+# 信息记录文件路径
+MESSAGES_FILE="/tmp/chat_messages.json"
 
 # 设置CGI头部
 echo "Content-type: text/plain"
 echo "" # 空行分隔头部和内容
-
-MESSAGES_FILE="/tmp/chat_messages.json"
 
 # 确保文件存在且权限正确，初始化为[]如果不存在
 if [[ ! -f "$MESSAGES_FILE" || ! -s "$MESSAGES_FILE" ]]; then
@@ -40,20 +46,15 @@ if [[ -z "$USER_IP" ]]; then
 	USER_IP="UNKNOWN_IP"
 fi
 
-TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+TIMESTAMP=$(TZ="$CUSTOM_TIMEZONE" date +"%Y-%m-%d %H:%M:%S")
 
 CLEAN_USERNAME=$(echo "$username" | tr '\n' ' ' | head -n 1)
 CLEAN_MESSAGE=$(echo "$message" | tr '\n' ' ' | head -n 1)
 
-# 消息长度限制
-MAX_MESSAGE_LENGTH=1024
 if [[ ${#CLEAN_MESSAGE} -gt $MAX_MESSAGE_LENGTH ]]; then
     CLEAN_MESSAGE=$(echo "$CLEAN_MESSAGE" | cut -c 1-$MAX_MESSAGE_LENGTH)
     echo "Warning: Message truncated to $MAX_MESSAGE_LENGTH characters."
 fi
-
-# 旧消息最大保存条数 (保留最新MAX_MESSAGES条)
-MAX_MESSAGES=200
 
 if [[ -n "$CLEAN_MESSAGE" ]]; then
 	# 使用时间戳和随机数生成唯一ID

@@ -2,12 +2,13 @@
 
 # 定义 jq 可执行文件的路径
 JQ_BIN="$(dirname "$0")/jq"
+# 信息记录文件路径
+MESSAGES_FILE="/tmp/chat_messages.json"
 
 # 设置CGI头部
 echo "Content-type: application/json" # 明确告诉浏览器返回的是 JSON
 echo "" # 空行分隔头部和内容
 
-MESSAGES_FILE="/tmp/chat_messages.json"
 
 # 检查文件是否存在并可读
 if [[ -f "$MESSAGES_FILE" ]]; then
