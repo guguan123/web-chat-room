@@ -67,20 +67,15 @@
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                const messagesText = await response.text();
+                // *** 关键改动：预期 JSON 格式响应 ***
+                const messages = await response.json(); // 直接解析 JSON 数组
                 chatWindow.innerHTML = '';
-                const messages = messagesText.trim().split('\n').filter(line => line.length > 0);
-                messages.forEach(messageLine => {
-                    // *** 关键改动：使用 '@@@' 作为分隔符 ***
-                    const parts = messageLine.split('@@@');
-                    if (parts.length >= 4) {
-                        const timestamp = parts[0];
-                        const ip = parts[1]; // IP 地址
-                        const username = parts[2];
-                        const message = parts.slice(3).join('@@@'); // 消息内容可能包含 @@@
+                messages.forEach(msg => {
+                    // 确保数据结构正确
+                    if (msg.timestamp && msg.ip && msg.username && msg.message) {
                         const messageElement = document.createElement('div');
                         messageElement.classList.add('message');
-                        messageElement.innerHTML = `<strong>${escapeHtml(username)}</strong>: ${escapeHtml(message)} <span class="timestamp">${timestamp}</span>`;
+                        messageElement.innerHTML = `<strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.message)} <span class="timestamp">${msg.timestamp}</span>`;
                         chatWindow.appendChild(messageElement);
                     }
                 });
