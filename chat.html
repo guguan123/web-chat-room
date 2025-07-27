@@ -90,11 +90,12 @@
 		const messageInput = document.getElementById('message-input');
 		const usernameInput = document.getElementById('username');
 		const sendButton = document.querySelector('.input-form button');
-		const enableNotificationsCheckbox = document.getElementById('enable-notifications'); // 获取新添加的复选框
+		const enableNotificationsCheckbox = document.getElementById('enable-notifications');
 
 		// 存储当前聊天窗口中已显示消息的ID，用于避免重复添加
 		const displayedMessageIds = new Set();
 		let currentNotifications = []; // 存储当前活动的通知实例，以便在需要时关闭
+		let isInitialLoad = true; // 标记是否是首次加载
 
 		// 页面加载时尝试从 localStorage 读取用户名和通知设置
 		const savedUsername = localStorage.getItem('chatUsername');
@@ -107,8 +108,13 @@
 			enableNotificationsCheckbox.checked = true;
 		}
 
-		setInterval(fetchMessages, 5000);
-		window.onload = fetchMessages;
+		// 页面加载后立即触发一次 fetchMessages，但避免通知
+		window.onload = async () => {
+			await fetchMessages(); // 首次加载，先获取消息
+			//isInitialLoad = false; // 首次加载完成后，将标记设置为 false
+			setInterval(fetchMessages, 5000); // 然后启动定时刷新
+		};
+
 
 		async function fetchMessages() {
 			try {
@@ -147,10 +153,13 @@
 					chatWindow.scrollTop = chatWindow.scrollHeight; // 滚动到底部
 				}
 
-				// 如果有新消息且页面处于后台，并且用户开启了通知
-				if (newMessages.length > 0 && document.hidden && enableNotificationsCheckbox.checked) {
+				// 如果是首次加载
+				if (isInitialLoad) {
+					isInitialLoad = false; // 首次加载完成后，将标记设置为 false
+				} else if (!isInitialLoad && newMessages.length > 0 && document.hidden && enableNotificationsCheckbox.checked) {
+					// 只有当不是首次加载，且有新消息，且页面处于后台，并且用户开启了通知时才触发
 					newMessages.forEach(msg => {
-						showNotification(msg.username, msg.message); // 为每条新消息触发通知
+						showNotification(msg.username, msg.message);
 					});
 				}
 
@@ -211,7 +220,7 @@
 				for (const part of messagesToSend) {
 					const formData = new URLSearchParams();
 					formData.append('username', username);
-					formData.append('message', part); // Send each part
+					formData.append('message', part);
 
 					const response = await fetch('./cgi-bin/post_message.sh', {
 						method: 'POST',
@@ -229,7 +238,7 @@
 				}
 
 				messageInput.value = '';
-				fetchMessages(); // Refresh messages after all parts are sent
+				fetchMessages();
 			} catch (error) {
 					console.error('发送消息失败:', error);
 			} finally {
