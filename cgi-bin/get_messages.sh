@@ -7,7 +7,7 @@ JQ_BIN="$(dirname "$0")/jq"
 echo "Content-type: application/json" # 明确告诉浏览器返回的是 JSON
 echo "" # 空行分隔头部和内容
 
-MESSAGES_FILE="/tmp/chat_messages.txt"
+MESSAGES_FILE="/tmp/chat_messages.json"
 
 # 检查文件是否存在并可读
 if [[ -f "$MESSAGES_FILE" ]]; then

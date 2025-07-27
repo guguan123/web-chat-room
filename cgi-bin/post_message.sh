@@ -7,7 +7,7 @@ JQ_BIN="$(dirname "$0")/jq"
 echo "Content-type: text/plain"
 echo "" # 空行分隔头部和内容
 
-MESSAGES_FILE="/tmp/chat_messages.txt"
+MESSAGES_FILE="/tmp/chat_messages.json"
 
 touch "$MESSAGES_FILE"
 chmod 660 "$MESSAGES_FILE" # 确保权限正确
