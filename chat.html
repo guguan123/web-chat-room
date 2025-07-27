@@ -118,7 +118,7 @@
 				}
 				const messages = await response.json();
 				let shouldScroll = false; // 标记是否需要滚动
-				let newMessagesCount = 0; // 记录新消息数量
+				let newMessages = []; // 存储新消息，用于通知
 
 				// 检查当前滚动位置，如果用户在底部，则新消息进来后需要滚动
 				if (chatWindow.scrollHeight - chatWindow.scrollTop <= chatWindow.clientHeight + 50) { // 加一点容错值
@@ -139,7 +139,7 @@
 						messageElement.innerHTML = `<strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.message)} <span class="timestamp">${localTime}</span>`;
 						chatWindow.appendChild(messageElement);
 						displayedMessageIds.add(msg.id); // 将新消息ID添加到Set中
-						newMessagesCount++; // 有新消息
+						newMessages.push(msg); // 将新消息添加到数组中
 					}
 				});
 
@@ -148,8 +148,10 @@
 				}
 
 				// 如果有新消息且页面处于后台，并且用户开启了通知
-				if (newMessagesCount > 0 && document.hidden && enableNotificationsCheckbox.checked) {
-					showNotification(newMessagesCount);
+				if (newMessages.length > 0 && document.hidden && enableNotificationsCheckbox.checked) {
+					newMessages.forEach(msg => {
+						showNotification(msg.username, msg.message); // 为每条新消息触发通知
+					});
 				}
 
 			} catch (error) {
@@ -158,11 +160,11 @@
 		}
 
 		// 显示通知
-		function showNotification(newMessagesCount) {
+		function showNotification(username, messageContent) {
 			if (Notification.permission === 'granted') {
-				const title = '新消息';
+				const title = username; // 通知标题是用户名
 				const options = {
-					body: `您有 ${newMessagesCount} 条新消息`,
+					body: messageContent, // 通知正文是消息内容
 					icon: 'https://www.google.com/s2/favicons?domain=guguan.us.kg' // 可以替换为你的网站图标
 				};
 				const notification = new Notification(title, options);
@@ -229,7 +231,7 @@
 				messageInput.value = '';
 				fetchMessages(); // Refresh messages after all parts are sent
 			} catch (error) {
-				console.error('发送消息失败:', error);
+					console.error('发送消息失败:', error);
 			} finally {
 				messageInput.disabled = false;
 				sendButton.disabled = false;
