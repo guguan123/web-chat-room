@@ -6,39 +6,64 @@
 	<title>聊天室</title>
 	<style>
 		body {
-			margin: 20px; /* 页面内容与边缘的间距 */
+			margin: 0; /* 将body的margin设置为0，以便更好地控制整体布局*/
+			display: flex; /* 使用Flexbox布局*/
+			flex-direction: column; /* 垂直方向排列子元素*/
+			height: 100vh; /* 设置body高度为视口高度，确保聊天窗口能撑开*/
+			padding: 20px; /* 页面内容与边缘的间距*/
+			box-sizing: border-box; /* 边距和内边距包含在元素的总宽度和高度内*/
 		}
 
-		/* 聊天窗口的核心样式：边框、内边距、固定高度、溢出滚动 */
-		#chat-window {
-			border: 1px solid #ccc; /* 灰色边框 */
-			padding: 10px; /* 内边距 */
-			height: 400px; /* 固定高度 */
-			overflow-y: scroll; /* 垂直滚动条 */
-			margin-bottom: 10px; /* 底部间距 */
-			background-color: #fff; /* 白色背景，保持可读性 */
+		h1 {
+			margin-top: 0; /* 移除标题的顶部外边距*/
+			margin-bottom: 20px; /* 增加标题底部外边距*/
 		}
 
-		/* 聊天消息的间距 */
-		.message {
-			margin-bottom: 8px; /* 每条消息之间的间距 */
-		}
-
-		/* 时间戳样式：小字体和灰色，弱化显示 */
-		.timestamp {
-			font-size: 0.8em; /* 字体小一点 */
-			color: #888; /* 灰色 */
-			margin-left: 10px; /* 与消息内容的间距 */
-		}
-
-		/* 输入框和按钮：移除大部分样式，保留必要的宽度调整 */
-		.input-form input[type="text"] {
-			width: calc(100% - 100px); /* 宽度占满父容器减去按钮宽度 */
-		}
-
-		/* 用户名输入框的底部间距 */
 		#username-input {
-			margin-bottom: 10px;
+			margin-bottom: 10px; /* 用户名输入框的底部间距*/
+		}
+
+		/* 聊天窗口的核心样式：边框、内边距、溢出滚动，高度自适应*/
+		#chat-window {
+			border: 1px solid #ccc; /* 灰色边框*/
+			padding: 10px; /* 内边距*/
+			flex-grow: 1; /* 允许聊天窗口占据所有可用空间*/
+			overflow-y: scroll; /* 垂直滚动条*/
+			margin-bottom: 10px; /* 底部间距*/
+			background-color: #fff; /* 白色背景，保持可读性*/
+		}
+
+		/* 聊天消息的间距*/
+		.message {
+			margin-bottom: 8px; /* 每条消息之间的间距*/
+		}
+
+		/* 时间戳样式：小字体和灰色，弱化显示*/
+		.timestamp {
+			font-size: 0.8em; /* 字体小一点*/
+			color: #888; /* 灰色*/
+			margin-left: 10px; /* 与消息内容的间距*/
+		}
+
+		/* 输入框和按钮：移除大部分样式，保留必要的宽度调整*/
+		.input-form {
+			display: flex; /* 使用Flexbox布局*/
+			width: 100%; /* 宽度占满父容器*/
+		}
+
+		.input-form input[type="text"] {
+			flex-grow: 1; /* 输入框占据所有可用空间*/
+			padding: 8px; /* 内边距*/
+			border: 1px solid #ccc; /* 边框*/
+			margin-right: 10px; /* 与按钮的间距*/
+		}
+
+		.input-form button {
+			padding: 8px 15px; /* 内边距*/
+			background-color: #007bff; /* 蓝色背景*/
+			color: white; /* 白色文字*/
+			border: none; /* 无边框*/
+			cursor: pointer; /* 鼠标指针样式*/
 		}
 	</style>
 </head>
@@ -65,16 +90,16 @@
 
 		setInterval(fetchMessages, 5000); // 每5秒获取一次消息
 
-		window.onload = fetchMessages;
+		window.onload = fetchMessages; // 页面加载时获取一次消息
 
 		async function fetchMessages() {
 			try {
-				const response = await fetch('/cgi-bin/get_messages.sh');
+				const response = await fetch('./cgi-bin/get_messages.sh');
 				if (!response.ok) {
 					throw new Error(`HTTP error! status: ${response.status}`);
 				}
 				const messages = await response.json();
-				chatWindow.innerHTML = '';
+				chatWindow.innerHTML = ''; // 清空聊天窗口
 				messages.forEach(msg => {
 					if (msg.timestamp && msg.ip && msg.username && msg.message) {
 						const messageElement = document.createElement('div');
@@ -83,7 +108,7 @@
 						chatWindow.appendChild(messageElement);
 					}
 				});
-				chatWindow.scrollTop = chatWindow.scrollHeight;
+				chatWindow.scrollTop = chatWindow.scrollHeight; // 滚动到底部
 			} catch (error) {
 				console.error('获取消息失败:', error);
 			}
@@ -101,7 +126,7 @@
 			formData.append('message', message);
 
 			try {
-				const response = await fetch('/cgi-bin/post_message.sh', {
+				const response = await fetch('./cgi-bin/post_message.sh', {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/x-www-form-urlencoded'
@@ -114,8 +139,8 @@
 				}
 				const result = await response.text();
 				console.log('消息发送结果:', result);
-				messageInput.value = '';
-				fetchMessages();
+				messageInput.value = ''; // 清空输入框
+				fetchMessages(); // 发送成功后刷新消息
 			} catch (error) {
 				console.error('发送消息失败:', error);
 			}
