@@ -1,140 +1,137 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>聊天室</title>
-    <style>
-        /* 保留基础的 body 样式，去除花哨的背景和字体 */
-        body {
-            margin: 20px; /* 页面内容与边缘的间距 */
-            /* 移除 font-family, background-color 让浏览器默认 */
-        }
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>聊天室</title>
+	<style>
+		body {
+			margin: 20px; /* 页面内容与边缘的间距 */
+		}
 
-        /* 聊天窗口的核心样式：边框、内边距、固定高度、溢出滚动 */
-        #chat-window {
-            border: 1px solid #ccc; /* 灰色边框 */
-            padding: 10px; /* 内边距 */
-            height: 400px; /* 固定高度 */
-            overflow-y: scroll; /* 垂直滚动条 */
-            margin-bottom: 10px; /* 底部间距 */
-            background-color: #fff; /* 白色背景，保持可读性 */
-        }
+		/* 聊天窗口的核心样式：边框、内边距、固定高度、溢出滚动 */
+		#chat-window {
+			border: 1px solid #ccc; /* 灰色边框 */
+			padding: 10px; /* 内边距 */
+			height: 400px; /* 固定高度 */
+			overflow-y: scroll; /* 垂直滚动条 */
+			margin-bottom: 10px; /* 底部间距 */
+			background-color: #fff; /* 白色背景，保持可读性 */
+		}
 
-        /* 聊天消息的间距 */
-        .message {
-            margin-bottom: 8px; /* 每条消息之间的间距 */
-            /* 移除其他样式，保持文字基础样式 */
-        }
+		/* 聊天消息的间距 */
+		.message {
+			margin-bottom: 8px; /* 每条消息之间的间距 */
+		}
 
-        /* 时间戳样式：小字体和灰色，弱化显示 */
-        .timestamp {
-            font-size: 0.8em; /* 字体小一点 */
-            color: #888; /* 灰色 */
-            margin-left: 10px; /* 与消息内容的间距 */
-        }
+		/* 时间戳样式：小字体和灰色，弱化显示 */
+		.timestamp {
+			font-size: 0.8em; /* 字体小一点 */
+			color: #888; /* 灰色 */
+			margin-left: 10px; /* 与消息内容的间距 */
+		}
 
-        /* 输入框和按钮：移除大部分样式，保留必要的宽度调整 */
-        .input-form input[type="text"] {
-            width: calc(100% - 100px); /* 宽度占满父容器减去按钮宽度 */
-        }
+		/* 输入框和按钮：移除大部分样式，保留必要的宽度调整 */
+		.input-form input[type="text"] {
+			width: calc(100% - 100px); /* 宽度占满父容器减去按钮宽度 */
+		}
 
-        /* 用户名输入框的底部间距 */
-        #username-input {
-            margin-bottom: 10px;
-        }
-    </style>
+		/* 用户名输入框的底部间距 */
+		#username-input {
+			margin-bottom: 10px;
+		}
+	</style>
 </head>
 <body>
-    <h1>聊天室</h1>
+	<h1>聊天室</h1>
 
-    <div id="username-input">
-        <label for="username">你的名字:</label>
-        <input type="text" id="username" placeholder="输入你的名字" value="anonymous">
-    </div>
+	<div id="username-input">
+		<label for="username">你的名字:</label>
+		<input type="text" id="username" placeholder="输入你的名字" value="anonymous">
+	</div>
 
-    <div id="chat-window">
-        </div>
+	<div id="chat-window">
+		</div>
 
-    <div class="input-form">
-        <input type="text" id="message-input" placeholder="输入消息...">
-        <button onclick="sendMessage()">发送</button>
-    </div>
+	<div class="input-form">
+		<input type="text" id="message-input" placeholder="输入消息...">
+		<button onclick="sendMessage()">发送</button>
+	</div>
 
-    <script>
-        const chatWindow = document.getElementById('chat-window');
-        const messageInput = document.getElementById('message-input');
-        const usernameInput = document.getElementById('username');
+	<script>
+		const chatWindow = document.getElementById('chat-window');
+		const messageInput = document.getElementById('message-input');
+		const usernameInput = document.getElementById('username');
 
-        setInterval(fetchMessages, 5000); // 每5秒获取一次消息
+		setInterval(fetchMessages, 5000); // 每5秒获取一次消息
 
-        window.onload = fetchMessages;
+		window.onload = fetchMessages;
 
-        async function fetchMessages() {
-            try {
-                const response = await fetch('/cgi-bin/get_messages.sh');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const messages = await response.json();
-                chatWindow.innerHTML = '';
-                messages.forEach(msg => {
-                    if (msg.timestamp && msg.ip && msg.username && msg.message) {
-                        const messageElement = document.createElement('div');
-                        messageElement.classList.add('message');
-                        messageElement.innerHTML = `<strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.message)} <span class="timestamp">${msg.timestamp}</span>`;
-                        chatWindow.appendChild(messageElement);
-                    }
-                });
-                chatWindow.scrollTop = chatWindow.scrollHeight;
-            } catch (error) {
-                console.error('获取消息失败:', error);
-            }
-        }
+		async function fetchMessages() {
+			try {
+				const response = await fetch('/cgi-bin/get_messages.sh');
+				if (!response.ok) {
+					throw new Error(`HTTP error! status: ${response.status}`);
+				}
+				const messages = await response.json();
+				chatWindow.innerHTML = '';
+				messages.forEach(msg => {
+					if (msg.timestamp && msg.ip && msg.username && msg.message) {
+						const messageElement = document.createElement('div');
+						messageElement.classList.add('message');
+						messageElement.innerHTML = `<strong>${escapeHtml(msg.username)}</strong>: ${escapeHtml(msg.message)} <span class="timestamp">${msg.timestamp}</span>`;
+						chatWindow.appendChild(messageElement);
+					}
+				});
+				chatWindow.scrollTop = chatWindow.scrollHeight;
+			} catch (error) {
+				console.error('获取消息失败:', error);
+			}
+		}
 
-        async function sendMessage() {
-            const message = messageInput.value.trim();
-            const username = usernameInput.value.trim() || 'anonymous';
-            if (message === '') {
-                return;
-            }
+		async function sendMessage() {
+			const message = messageInput.value.trim();
+			const username = usernameInput.value.trim() || 'anonymous';
+			if (message === '') {
+				return;
+			}
 
-            const formData = new URLSearchParams();
-            formData.append('username', username);
-            formData.append('message', message);
+			const formData = new URLSearchParams();
+			formData.append('username', username);
+			formData.append('message', message);
 
-            try {
-                const response = await fetch('/cgi-bin/post_message.sh', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: formData.toString()
-                });
+			try {
+				const response = await fetch('/cgi-bin/post_message.sh', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded'
+					},
+					body: formData.toString()
+				});
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const result = await response.text();
-                console.log('消息发送结果:', result);
-                messageInput.value = '';
-                fetchMessages();
-            } catch (error) {
-                console.error('发送消息失败:', error);
-            }
-        }
+				if (!response.ok) {
+					throw new Error(`HTTP error! status: ${response.status}`);
+				}
+				const result = await response.text();
+				console.log('消息发送结果:', result);
+				messageInput.value = '';
+				fetchMessages();
+			} catch (error) {
+				console.error('发送消息失败:', error);
+			}
+		}
 
-        function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.appendChild(document.createTextNode(str));
-            return div.innerHTML;
-        }
+		function escapeHtml(str) {
+			const div = document.createElement('div');
+			div.appendChild(document.createTextNode(str));
+			return div.innerHTML;
+		}
 
-        messageInput.addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        });
-    </script>
+		messageInput.addEventListener('keypress', function(event) {
+			if (event.key === 'Enter') {
+				sendMessage();
+			}
+		});
+	</script>
 </body>
 </html>
