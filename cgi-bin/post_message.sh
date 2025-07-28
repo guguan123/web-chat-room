@@ -30,7 +30,7 @@ for i in "${ADDR[@]}"; do
 	VALUE=$(echo "$i" | cut -d'=' -f2-)
 	
 	# URL解码
-	DECODED_VALUE=$(echo "$VALUE" | sed -r 's/%(..)/\\x\1/g' | xargs -0 printf "%b")
+	DECODED_VALUE=$(echo "$VALUE" | sed -r 's/\+/ /g; s/%(..)/\\x\1/g' | xargs -0 printf "%b")
 
 	case "$KEY" in
 		"username") username="$DECODED_VALUE" ;;
