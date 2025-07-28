@@ -1,14 +1,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <sqlite3.h>
+#include <time.h>
 #include <ctype.h>
+#include "cJSON.h"
 
-#define DB_PATH "/tmp/chat_messages.db" // 数据库文件路径
+#define DB_PATH "/tmp/chat_messages.db"
+#define MAX_MESSAGES_GET 50 // 用于GET请求限制获取的消息数量
 #define MAX_MESSAGE_LENGTH 1024 // 消息内容的最大长度
-#define MAX_MESSAGES 200 // 数据库中保留的最大消息数量
+#define MAX_MESSAGES_POST 200 // 数据库中保留的最大消息数量（用于POST请求清理旧消息）
 #define MAX_POST_DATA_SIZE 4096 // POST 数据缓冲区最大尺寸
+
+// 辅助函数：将时间戳格式化为 RFC 3339 格式
+void format_timestamp_rfc3339(time_t rawtime, char* buffer, size_t len) {
+    struct tm *info;
+    info = gmtime(&rawtime); // 使用 GMT（格林尼治标准时间）获取 UTC 时间
+    strftime(buffer, len, "%Y-%m-%dT%H:%M:%SZ", info); // RFC 3339 格式字符串
+}
 
 // 函数：URL 解码字符串
 void url_decode(char *dst, const char *src) {
@@ -19,9 +28,9 @@ void url_decode(char *dst, const char *src) {
             ((a = src[1]) && (b = src[2])) &&
             (isxdigit(a) && isxdigit(b))) {
             // 将十六进制字符转换为对应的数值
-            if (a >= 'a') a -= 'a' - 'A'; // 小写转大写
-            if (a >= '0' && a <= '9') a -= '0'; // 数字字符转数字
-            else a -= 'A' - 10; // 字母字符转数字 (A=10, B=11...)
+            if (a >= 'a') a -= 'a' - 'A';
+            if (a >= '0' && a <= '9') a -= '0';
+            else a -= 'A' - 10;
             if (b >= 'a') b -= 'a' - 'A';
             if (b >= '0' && b <= '9') b -= '0';
             else b -= 'A' - 10;
@@ -39,17 +48,115 @@ void url_decode(char *dst, const char *src) {
     *dst++ = '\0'; // 字符串以空字符结尾
 }
 
-int main() {
+// 处理 GET 请求的函数 (原 get_messages.c 的核心逻辑)
+int handle_get_messages() {
+    sqlite3 *db; // SQLite 数据库连接对象
+    sqlite3_stmt *stmt; // SQLite 预处理语句对象
+    int rc; // SQLite 操作的返回码
+
+    // 设置 CGI 响应头，指示内容类型为 JSON
+    printf("Content-type: application/json\r\n\r\n");
+
+    // 打开 SQLite 数据库连接
+    rc = sqlite3_open(DB_PATH, &db);
+    if (rc) {
+        fprintf(stderr, "{\"error\": \"Can't open database: %s\"}\n", sqlite3_errmsg(db)); // 如果打开数据库失败，则输出错误信息到标准错误流，并返回错误码
+        return 1;
+    }
+
+    // 创建一个 cJSON 数组，用于存储所有消息对象
+    cJSON *root = cJSON_CreateArray();
+    if (root == NULL) {
+        fprintf(stderr, "{\"error\": \"Failed to create JSON array\"}\n"); // 如果创建 JSON 数组失败，则输出错误信息，关闭数据库，并返回错误码
+        sqlite3_close(db);
+        return 1;
+    }
+
+    // SQL 查询语句：选择最新的 MAX_MESSAGES_GET 条消息，按 ID 降序排列 (ID 通常隐式地按时间戳生成)
+    const char *sql = "SELECT id, timestamp, ip, username, message FROM messages ORDER BY id DESC LIMIT ?;";
+    // 准备 SQL 语句
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "{\"error\": \"Failed to prepare statement: %s\"}\n", sqlite3_errmsg(db)); // 如果准备语句失败，则输出错误信息，释放 JSON 对象，关闭数据库，并返回错误码
+        cJSON_Delete(root);
+        sqlite3_close(db);
+        return 1;
+    }
+
+    // 绑定 MAX_MESSAGES_GET 到 SQL 语句中的 LIMIT 参数
+    sqlite3_bind_int(stmt, 1, MAX_MESSAGES_GET);
+
+    // 创建一个临时 cJSON 数组，用于按逆序（从最新到最旧）存储从数据库中获取的消息
+    cJSON *temp_array = cJSON_CreateArray();
+    if (temp_array == NULL) {
+        fprintf(stderr, "{\"error\": \"Failed to create temporary JSON array\"}\n"); // 如果创建临时 JSON 数组失败，则输出错误信息，释放 JSON 对象，结束语句，关闭数据库，并返回错误码
+        cJSON_Delete(root);
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+        return 1;
+    }
+
+    // 循环遍历查询结果集，每次获取一行消息数据
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        // 为当前消息创建一个 cJSON 对象
+        cJSON *message_obj = cJSON_CreateObject();
+        if (message_obj == NULL) {
+            fprintf(stderr, "{\"error\": \"Failed to create JSON object for message\"}\n"); // 如果创建消息 JSON 对象失败，则输出错误信息，释放所有 JSON 对象，结束语句，关闭数据库，并返回错误码
+            cJSON_Delete(root);
+            cJSON_Delete(temp_array);
+            sqlite3_finalize(stmt);
+            sqlite3_close(db);
+            return 1;
+        }
+
+        // 从查询结果中获取消息的各个字段
+        const char *id = (const char *)sqlite3_column_text(stmt, 0); // 消息 ID
+        time_t timestamp_raw = (time_t)sqlite3_column_int64(stmt, 1); // 原始时间戳
+        const char *ip = (const char *)sqlite3_column_text(stmt, 2); // 用户 IP 地址
+        const char *username = (const char *)sqlite3_column_text(stmt, 3); // 用户名
+        const char *message = (const char *)sqlite3_column_text(stmt, 4); // 消息内容
+
+        char timestamp_str[30]; // 定义一个足够大的缓冲区来存储格式化后的时间戳
+        format_timestamp_rfc3339(timestamp_raw, timestamp_str, sizeof(timestamp_str)); // 格式化时间戳
+
+        // 将消息字段添加到 JSON 对象中
+        cJSON_AddStringToObject(message_obj, "id", id);
+        cJSON_AddStringToObject(message_obj, "timestamp", timestamp_str);
+        cJSON_AddStringToObject(message_obj, "ip", ip);
+        cJSON_AddStringToObject(message_obj, "username", username);
+        cJSON_AddStringToObject(message_obj, "message", message);
+
+        // 将当前消息 JSON 对象添加到临时数组中（此时是逆序）
+        cJSON_AddItemToArray(temp_array, message_obj);
+    }
+
+    // 将消息从临时数组（逆序）添加到根数组（正序），实现按时间顺序排列
+    for (int i = cJSON_GetArraySize(temp_array) - 1; i >= 0; i--) {
+        cJSON_AddItemToArray(root, cJSON_DetachItemFromArray(temp_array, i));
+    }
+    cJSON_Delete(temp_array); // 释放临时数组的内存
+
+    sqlite3_finalize(stmt); // 结束 SQLite 预处理语句
+    sqlite3_close(db); // 关闭 SQLite 数据库连接
+
+    // 将根 JSON 数组打印为未格式化的 JSON 字符串
+    char *json_output = cJSON_PrintUnformatted(root);
+    if (json_output != NULL) {
+        printf("%s\n", json_output); // 输出 JSON 字符串到标准输出
+        free(json_output); // 释放 JSON 字符串内存
+    } else {
+        fprintf(stderr, "{\"error\": \"Failed to print JSON\"}\n"); // 如果 JSON 打印失败，则输出错误信息
+    }
+
+    cJSON_Delete(root); // 释放根 JSON 数组的内存
+
+    return 0; // 程序成功执行
+}
+
+// 处理 POST 请求的函数 (原 post_message.c 的核心逻辑)
+int handle_post_message() {
     // 设置 CGI 响应头，指示内容类型为纯文本
     printf("Content-type: text/plain\r\n\r\n");
-
-    // 获取请求方法
-    char *request_method = getenv("REQUEST_METHOD");
-    // 检查请求方法是否为 POST
-    if (request_method == NULL || strcmp(request_method, "POST") != 0) {
-        printf("Error: This script only supports POST requests.\n"); // 如果不是 POST 请求，则打印错误信息
-        return 1; // 返回错误码
-    }
 
     // 获取 POST 请求的内容长度
     char *content_length_str = getenv("CONTENT_LENGTH");
@@ -166,7 +273,7 @@ int main() {
     }
     sqlite3_finalize(stmt); // 结束语句
 
-    // 清理旧消息：只保留最新的 MAX_MESSAGES 条消息
+    // 清理旧消息：只保留最新的 MAX_MESSAGES_POST 条消息
     const char *sql_delete_old = "DELETE FROM messages WHERE id NOT IN (SELECT id FROM messages ORDER BY timestamp DESC, id DESC LIMIT ?);"; // 按时间戳和 ID 降序排序，然后限制数量
     // 准备 SQL 删除语句
     rc = sqlite3_prepare_v2(db, sql_delete_old, -1, &stmt, 0);
@@ -175,7 +282,7 @@ int main() {
         sqlite3_close(db); // 关闭数据库
         return 1; // 返回错误码
     }
-    sqlite3_bind_int(stmt, 1, MAX_MESSAGES); // 绑定要保留的消息数量
+    sqlite3_bind_int(stmt, 1, MAX_MESSAGES_POST); // 绑定要保留的消息数量
 
     // 执行删除语句
     rc = sqlite3_step(stmt);
@@ -192,4 +299,24 @@ int main() {
     printf("OK: Message posted and old messages cleaned.\n"); // 打印成功信息
 
     return 0; // 程序成功执行
+}
+
+int main() {
+    char *request_method = getenv("REQUEST_METHOD"); // 获取请求方法
+
+    if (request_method == NULL) {
+        printf("Content-type: text/plain\r\n\r\n");
+        printf("Error: REQUEST_METHOD not set.\n");
+        return 1;
+    }
+
+    if (strcmp(request_method, "GET") == 0) {
+        return handle_get_messages();
+    } else if (strcmp(request_method, "POST") == 0) {
+        return handle_post_message();
+    } else {
+        printf("Content-type: text/plain\r\n\r\n");
+        printf("Error: Unsupported request method: %s\n", request_method);
+        return 1;
+    }
 }

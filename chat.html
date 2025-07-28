@@ -115,10 +115,9 @@
 			setInterval(fetchMessages, 5000); // 然后启动定时刷新
 		};
 
-
 		async function fetchMessages() {
 			try {
-				const response = await fetch('./cgi-bin/get_messages.cgi');
+				const response = await fetch('./cgi-bin/chat_handler.cgi');
 				if (!response.ok) {
 					throw new Error(`HTTP error! status: ${response.status}`);
 				}
@@ -222,7 +221,7 @@
 					formData.append('username', username);
 					formData.append('message', part);
 
-					const response = await fetch('./cgi-bin/post_message.cgi', {
+					const response = await fetch('./cgi-bin/chat_handler.cgi', {
 						method: 'POST',
 						headers: {
 							'Content-Type': 'application/x-www-form-urlencoded'
