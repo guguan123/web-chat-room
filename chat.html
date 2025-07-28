@@ -68,8 +68,8 @@
 	<h1>聊天室</h1>
 
 	<div id="username-input">
-		<label for="username">你的名字:</label>
-		<input type="text" id="username" placeholder="输入你的名字" value="anonymous">
+		<label for="username">昵称:</label>
+		<input type="text" id="username" placeholder="输入昵称" value="anonymous">
 	</div>
 
 	<div id="notification-setting">
@@ -174,7 +174,7 @@
 				const title = username; // 通知标题是用户名
 				const options = {
 					body: messageContent, // 通知正文是消息内容
-					icon: 'https://www.google.com/s2/favicons?domain=guguan.us.kg' // 可以替换为你的网站图标
+					icon: 'https://www.google.com/s2/favicons?domain=guguan.us.kg' // 网站图标
 				};
 				const notification = new Notification(title, options);
 				currentNotifications.push(notification); // 存储通知实例
