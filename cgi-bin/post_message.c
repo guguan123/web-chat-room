@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <sqlite3.h>
+#include <ctype.h>
 
 #define DB_PATH "/tmp/chat_messages.db"
 #define MAX_MESSAGE_LENGTH 1024
