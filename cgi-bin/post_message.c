@@ -3,13 +3,14 @@
 #include <string.h>
 #include <time.h>
 #include <sqlite3.h>
-#include <ctype.h>
+#include <ctype.h> // For isxdigit
 
 #define DB_PATH "/tmp/chat_messages.db"
 #define MAX_MESSAGE_LENGTH 1024
 #define MAX_MESSAGES 200
+#define MAX_POST_DATA_SIZE 4096 // Increased buffer for POST data
 
-// Function to URL-decode a string (simplified for CGI context)
+// Function to URL-decode a string
 void url_decode(char *dst, const char *src) {
     char a, b;
     while (*src) {
@@ -38,28 +39,52 @@ int main() {
     // Set CGI header
     printf("Content-type: text/plain\r\n\r\n");
 
-    char *query_string = getenv("QUERY_STRING");
+    char *request_method = getenv("REQUEST_METHOD");
+    if (request_method == NULL || strcmp(request_method, "POST") != 0) {
+        printf("Error: This script only supports POST requests.\n");
+        return 1;
+    }
+
+    char *content_length_str = getenv("CONTENT_LENGTH");
+    int content_length = 0;
+    if (content_length_str != NULL) {
+        content_length = atoi(content_length_str);
+    }
+
+    if (content_length <= 0 || content_length > MAX_POST_DATA_SIZE) {
+        printf("Error: Invalid or missing POST data length.\n");
+        return 1;
+    }
+
+    char post_data[MAX_POST_DATA_SIZE + 1];
+    if (fread(post_data, 1, content_length, stdin) != content_length) {
+        printf("Error: Failed to read POST data from stdin.\n");
+        return 1;
+    }
+    post_data[content_length] = '\0'; // Null-terminate the string
+
     char username[256] = "";
     char message[MAX_MESSAGE_LENGTH + 1] = "";
-    char decoded_value[MAX_MESSAGE_LENGTH + 1];
+    char decoded_value[MAX_MESSAGE_LENGTH + 1]; // Temp buffer for decoded values
 
-    if (query_string != NULL) {
-        char *token;
-        char *rest = query_string;
-        while ((token = strtok_r(rest, "&", &rest))) {
-            char *key = token;
-            char *value = strchr(token, '=');
-            if (value) {
-                *value = '\0'; // Null-terminate key
-                value++; // Move past '='
-                url_decode(decoded_value, value); // Decode value
-                if (strcmp(key, "username") == 0) {
-                    strncpy(username, decoded_value, sizeof(username) - 1);
-                    username[sizeof(username) - 1] = '\0';
-                } else if (strcmp(key, "message") == 0) {
-                    strncpy(message, decoded_value, sizeof(message) - 1);
-                    message[sizeof(message) - 1] = '\0';
-                }
+    char *token;
+    char *rest = post_data;
+
+    // Parse URL-encoded POST data
+    while ((token = strtok_r(rest, "&", &rest))) {
+        char *key = token;
+        char *value = strchr(token, '=');
+        if (value) {
+            *value = '\0'; // Null-terminate key
+            value++;       // Move past '='
+            url_decode(decoded_value, value); // Decode value
+
+            if (strcmp(key, "username") == 0) {
+                strncpy(username, decoded_value, sizeof(username) - 1);
+                username[sizeof(username) - 1] = '\0';
+            } else if (strcmp(key, "message") == 0) {
+                strncpy(message, decoded_value, sizeof(message) - 1);
+                message[sizeof(message) - 1] = '\0';
             }
         }
     }
@@ -93,14 +118,13 @@ int main() {
         user_ip = "UNKNOWN_IP";
     }
 
-    // Generate unique ID based on timestamp and a simple counter (or UUID if preferred)
-    // For simplicity, using current time in milliseconds as part of ID, and also as the timestamp value.
+    // Generate unique ID based on timestamp (seconds since epoch)
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    long long current_time_ms = (long long)ts.tv_sec * 1000 + (long long)ts.tv_nsec / 1000000;
+    long long current_time_sec = (long long)ts.tv_sec;
 
     char message_id[64];
-    snprintf(message_id, sizeof(message_id), "msg_%lld", current_time_ms);
+    snprintf(message_id, sizeof(message_id), "msg_%lld", current_time_sec); // Using seconds for ID for simplicity, can add nanos if needed
 
     // Insert new message
     const char *sql_insert = "INSERT INTO messages (id, timestamp, ip, username, message) VALUES (?, ?, ?, ?, ?);";
@@ -112,7 +136,7 @@ int main() {
     }
 
     sqlite3_bind_text(stmt, 1, message_id, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 2, ts.tv_sec); // Store timestamp as Unix epoch seconds
+    sqlite3_bind_int64(stmt, 2, current_time_sec); // Store timestamp as Unix epoch seconds
     sqlite3_bind_text(stmt, 3, user_ip, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 4, username, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 5, message, -1, SQLITE_STATIC);
@@ -127,7 +151,7 @@ int main() {
     sqlite3_finalize(stmt);
 
     // Clean up old messages (keep only MAX_MESSAGES)
-    const char *sql_delete_old = "DELETE FROM messages WHERE id NOT IN (SELECT id FROM messages ORDER BY id DESC LIMIT ?);";
+    const char *sql_delete_old = "DELETE FROM messages WHERE id NOT IN (SELECT id FROM messages ORDER BY timestamp DESC, id DESC LIMIT ?);"; // Order by timestamp and then id for deterministic deletion
     rc = sqlite3_prepare_v2(db, sql_delete_old, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Error: Failed to prepare delete statement: %s\n", sqlite3_errmsg(db));
