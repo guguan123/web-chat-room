@@ -1,0 +1,13 @@
+#!/sbin/openrc-run
+
+name="httpd"
+directory="/var/www/localhost/htdocs/"
+command="${directory}busybox_HTTPD"
+command_args="-f"
+command_background="yes"
+pidfile="/run/${name}.pid"
+
+depend() {
+	need net
+	after net
+}
