@@ -7,7 +7,7 @@ if [ ! -f "$DB_PATH" ]; then
     echo "Creating new database at $DB_PATH..."
     sqlite3 "$DB_PATH" <<EOF
 CREATE TABLE messages (
-    id TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     timestamp INTEGER,
     ip TEXT,
     username TEXT,

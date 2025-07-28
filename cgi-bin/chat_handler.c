@@ -238,16 +238,8 @@ int handle_post_message() {
         user_ip = "UNKNOWN_IP"; // 如果无法获取 IP，则设置为 "UNKNOWN_IP"
     }
 
-    // 生成基于时间戳的唯一消息 ID (使用秒级时间戳)
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts); // 获取实时时间
-    long long current_time_sec = (long long)ts.tv_sec; // 转换为秒级时间戳
-
-    char message_id[64]; // 消息 ID 缓冲区
-    snprintf(message_id, sizeof(message_id), "msg_%lld", current_time_sec); // 格式化消息 ID
-
     // SQL 插入语句：将新消息插入到 messages 表中
-    const char *sql_insert = "INSERT INTO messages (id, timestamp, ip, username, message) VALUES (?, ?, ?, ?, ?);";
+    const char *sql_insert = "INSERT INTO messages (id, timestamp, ip, username, message) VALUES (?, ?, ?, ?);";
     // 准备 SQL 插入语句
     rc = sqlite3_prepare_v2(db, sql_insert, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
@@ -257,11 +249,10 @@ int handle_post_message() {
     }
 
     // 绑定参数到插入语句
-    sqlite3_bind_text(stmt, 1, message_id, -1, SQLITE_STATIC); // 绑定消息 ID
-    sqlite3_bind_int64(stmt, 2, current_time_sec); // 绑定 Unix epoch 秒级时间戳
-    sqlite3_bind_text(stmt, 3, user_ip, -1, SQLITE_STATIC); // 绑定用户 IP
-    sqlite3_bind_text(stmt, 4, username, -1, SQLITE_STATIC); // 绑定用户名
-    sqlite3_bind_text(stmt, 5, message, -1, SQLITE_STATIC); // 绑定消息内容
+    sqlite3_bind_int64(stmt, 1, current_time_sec); // 绑定 Unix epoch 秒级时间戳
+    sqlite3_bind_text(stmt, 2, user_ip, -1, SQLITE_STATIC); // 绑定用户 IP
+    sqlite3_bind_text(stmt, 3, username, -1, SQLITE_STATIC); // 绑定用户名
+    sqlite3_bind_text(stmt, 4, message, -1, SQLITE_STATIC); // 绑定消息内容
 
     // 执行插入语句
     rc = sqlite3_step(stmt);
