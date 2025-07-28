@@ -12,13 +12,6 @@
 #define MAX_MESSAGES_POST 200 // 数据库中保留的最大消息数量（用于POST请求清理旧消息）
 #define MAX_POST_DATA_SIZE 4096 // POST 数据缓冲区最大尺寸
 
-// 辅助函数：将时间戳格式化为 RFC 3339 格式
-void format_timestamp_rfc3339(time_t rawtime, char* buffer, size_t len) {
-    struct tm *info;
-    info = gmtime(&rawtime); // 使用 GMT（格林尼治标准时间）获取 UTC 时间
-    strftime(buffer, len, "%Y-%m-%dT%H:%M:%SZ", info); // RFC 3339 格式字符串
-}
-
 // 函数：URL 解码字符串
 void url_decode(char *dst, const char *src) {
     char a, b;
@@ -111,17 +104,14 @@ int handle_get_messages() {
 
         // 从查询结果中获取消息的各个字段
         const char *id = (const char *)sqlite3_column_text(stmt, 0); // 消息 ID
-        time_t timestamp_raw = (time_t)sqlite3_column_int64(stmt, 1); // 原始时间戳
+        long long timestamp_raw = sqlite3_column_int64(stmt, 1); // 时间戳 (long long 类型以确保兼容性)
         const char *ip = (const char *)sqlite3_column_text(stmt, 2); // 用户 IP 地址
         const char *username = (const char *)sqlite3_column_text(stmt, 3); // 用户名
         const char *message = (const char *)sqlite3_column_text(stmt, 4); // 消息内容
 
-        char timestamp_str[30]; // 定义一个足够大的缓冲区来存储格式化后的时间戳
-        format_timestamp_rfc3339(timestamp_raw, timestamp_str, sizeof(timestamp_str)); // 格式化时间戳
-
         // 将消息字段添加到 JSON 对象中
         cJSON_AddStringToObject(message_obj, "id", id);
-        cJSON_AddStringToObject(message_obj, "timestamp", timestamp_str);
+        cJSON_AddNumberToObject(message_obj, "timestamp", timestamp_raw); // 直接添加数字类型的时间戳
         cJSON_AddStringToObject(message_obj, "ip", ip);
         cJSON_AddStringToObject(message_obj, "username", username);
         cJSON_AddStringToObject(message_obj, "message", message);
@@ -239,7 +229,7 @@ int handle_post_message() {
     }
 
     // SQL 插入语句：将新消息插入到 messages 表中
-    const char *sql_insert = "INSERT INTO messages (id, timestamp, ip, username, message) VALUES (?, ?, ?, ?);";
+    const char *sql_insert = "INSERT INTO messages (timestamp, ip, username, message) VALUES (?, ?, ?, ?);";
     // 准备 SQL 插入语句
     rc = sqlite3_prepare_v2(db, sql_insert, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
@@ -249,7 +239,7 @@ int handle_post_message() {
     }
 
     // 绑定参数到插入语句
-    sqlite3_bind_int64(stmt, 1, current_time_sec); // 绑定 Unix epoch 秒级时间戳
+    sqlite3_bind_int64(stmt, 1, time(NULL)); // 绑定时间戳
     sqlite3_bind_text(stmt, 2, user_ip, -1, SQLITE_STATIC); // 绑定用户 IP
     sqlite3_bind_text(stmt, 3, username, -1, SQLITE_STATIC); // 绑定用户名
     sqlite3_bind_text(stmt, 4, message, -1, SQLITE_STATIC); // 绑定消息内容
