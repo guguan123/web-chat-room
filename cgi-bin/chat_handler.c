@@ -4,6 +4,7 @@
 #include <sqlite3.h>
 #include <time.h>
 #include <ctype.h>
+#include <sys/stat.h> // 用于检查文件是否存在
 #include "cJSON.h"
 
 #define DB_PATH "/tmp/chat_messages.db"
@@ -40,6 +41,60 @@ void url_decode(char *dst, const char *src) {
     }
     *dst++ = '\0'; // 字符串以空字符结尾
 }
+
+// 函数：初始化数据库
+int init_database() {
+    sqlite3 *db;
+    char *err_msg = 0;
+    int rc;
+
+    // 检查数据库文件是否存在
+    struct stat buffer;
+    if (stat(DB_PATH, &buffer) == 0) {
+        // 文件存在，不需要创建
+        // fprintf(stderr, "Database already exists at %s. Skipping creation.\n", DB_PATH);
+        return 0;
+    }
+
+    fprintf(stderr, "Creating new database at %s...\n", DB_PATH);
+
+    // 打开数据库连接（如果文件不存在，会自动创建）
+    rc = sqlite3_open(DB_PATH, &db);
+    if (rc) {
+        fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+        return 1;
+    }
+
+    // 创建 messages 表的 SQL 语句
+    const char *sql_create_table = "CREATE TABLE messages ("
+                                   "id INTEGER PRIMARY KEY,"
+                                   "timestamp INTEGER,"
+                                   "ip TEXT,"
+                                   "username TEXT,"
+                                   "message TEXT"
+                                   ");";
+
+    // 执行 SQL 语句
+    rc = sqlite3_exec(db, sql_create_table, 0, 0, &err_msg);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        return 1;
+    }
+
+    sqlite3_close(db);
+    fprintf(stderr, "Database created successfully.\n");
+
+    // 设置数据库文件权限
+    if (chmod(DB_PATH, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP) != 0) { // 660 权限
+        fprintf(stderr, "Error setting database file permissions.\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 
 // 处理 GET 请求的函数 (原 get_messages.c 的核心逻辑)
 int handle_get_messages() {
@@ -283,6 +338,13 @@ int handle_post_message() {
 }
 
 int main() {
+    // 在处理请求之前，先初始化数据库
+    if (init_database() != 0) {
+        printf("Content-type: text/plain\r\n\r\n");
+        printf("Error: Failed to initialize database.\n");
+        return 1;
+    }
+
     char *request_method = getenv("REQUEST_METHOD"); // 获取请求方法
 
     if (request_method == NULL) {
