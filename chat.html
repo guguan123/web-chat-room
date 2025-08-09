@@ -127,10 +127,12 @@
 		async function fetchMessages() {
 			try {
 				const response = await fetch('./cgi-bin/chat_handler.cgi');
+				const result = await response.json();
+				
 				if (!response.ok) {
-					throw new Error(`HTTP error! status: ${response.status}`);
+					throw new Error(result.message || `HTTP error! status: ${response.status}`);
 				}
-				const messages = await response.json();
+
 				let shouldScroll = false; // 标记是否需要滚动
 				let newMessages = []; // 存储新消息，用于通知
 
@@ -138,6 +140,8 @@
 				if (chatWindow.scrollHeight - chatWindow.scrollTop <= chatWindow.clientHeight + 50) { // 加一点容错值
 					shouldScroll = true;
 				}
+				
+				const messages = result.data; // 从 data 字段中获取消息数组
 
 				messages.forEach(msg => {
 					// 只有当消息包含必需字段且其ID尚未显示时才添加
@@ -230,6 +234,7 @@
 			const password = passwordInput.value.trim();
 
 			if (message === '') {
+				alert('消息内容不能为空。');
 				return;
 			}
 
@@ -265,18 +270,20 @@
 						},
 						body: formData.toString()
 					});
+					
+					const result = await response.json();
 
 					if (!response.ok) {
-						throw new Error(`HTTP error! status: ${response.status}`);
+						throw new Error(result.message || `HTTP error! status: ${response.status}`);
 					}
-					const result = await response.text();
-					console.log('消息发送结果:', result);
+					console.log('消息发送结果:', result.message);
 				}
 
 				messageInput.value = '';
 				fetchMessages();
 			} catch (error) {
-					console.error('发送消息失败:', error);
+				console.error('发送消息失败:', error);
+				alert('发送消息失败: ' + error.message);
 			} finally {
 				messageInput.disabled = false;
 				sendButton.disabled = false;

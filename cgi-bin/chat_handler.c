@@ -78,6 +78,18 @@ void parse_cookies(const char *cookie_str, char *username, size_t username_size,
     free(cookie_copy);
 }
 
+// 新增函数：发送统一的 JSON 响应
+void send_json_response(int http_status, const char *status_text, cJSON *json_body) {
+    printf("Status: %d %s\r\n", http_status, status_text);
+    printf("Content-type: application/json\r\n\r\n");
+    char *json_output = cJSON_PrintUnformatted(json_body);
+    if (json_output != NULL) {
+        printf("%s\n", json_output);
+        free(json_output);
+    }
+    cJSON_Delete(json_body);
+}
+
 // 函数：初始化数据库
 int init_database() {
     sqlite3 *db;
@@ -87,8 +99,6 @@ int init_database() {
     // 检查数据库文件是否存在
     struct stat buffer;
     if (stat(DB_PATH, &buffer) == 0) {
-        // 文件存在，不需要创建
-        // fprintf(stderr, "Database already exists at %s. Skipping creation.\n", DB_PATH);
         return 0;
     }
 
@@ -147,27 +157,36 @@ int init_database() {
 }
 
 
-// 处理 GET 请求的函数 (原 get_messages.c 的核心逻辑)
+// 处理 GET 请求的函数
 int handle_get_messages() {
     sqlite3 *db; // SQLite 数据库连接对象
     sqlite3_stmt *stmt; // SQLite 预处理语句对象
     int rc; // SQLite 操作的返回码
 
-    // 设置 CGI 响应头，指示内容类型为 JSON
-    printf("Content-type: application/json\r\n\r\n");
-
     // 打开 SQLite 数据库连接
     rc = sqlite3_open(DB_PATH, &db);
     if (rc) {
-        fprintf(stderr, "{\"error\": \"Can't open database: %s\"}\n", sqlite3_errmsg(db)); // 如果打开数据库失败，则输出错误信息到标准错误流，并返回错误码
+		// 如果打开数据库失败，则输出错误信息到标准错误流，并返回错误码
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", sqlite3_errmsg(db));
+        send_json_response(500, "Internal Server Error", response_json);
         return 1;
     }
 
-    // 创建一个 cJSON 数组，用于存储所有消息对象
-    cJSON *root = cJSON_CreateArray();
-    if (root == NULL) {
-        fprintf(stderr, "{\"error\": \"Failed to create JSON array\"}\n"); // 如果创建 JSON 数组失败，则输出错误信息，关闭数据库，并返回错误码
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "status", "success");
+    cJSON *data_array = cJSON_CreateArray();
+    cJSON_AddItemToObject(root, "data", data_array);
+
+    if (root == NULL || data_array == NULL) {
+		// 如果创建 JSON 数组失败，则输出错误信息，关闭数据库，并返回错误码
+        cJSON_Delete(root);
         sqlite3_close(db);
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to create JSON array");
+        send_json_response(500, "Internal Server Error", response_json);
         return 1;
     }
 
@@ -176,9 +195,13 @@ int handle_get_messages() {
     // 准备 SQL 语句
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "{\"error\": \"Failed to prepare statement: %s\"}\n", sqlite3_errmsg(db)); // 如果准备语句失败，则输出错误信息，释放 JSON 对象，关闭数据库，并返回错误码
+		// 如果准备语句失败，则输出错误信息，释放 JSON 对象，关闭数据库，并返回错误码
         cJSON_Delete(root);
         sqlite3_close(db);
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to prepare statement");
+        send_json_response(500, "Internal Server Error", response_json);
         return 1;
     }
 
@@ -188,10 +211,14 @@ int handle_get_messages() {
     // 创建一个临时 cJSON 数组，用于按逆序（从最新到最旧）存储从数据库中获取的消息
     cJSON *temp_array = cJSON_CreateArray();
     if (temp_array == NULL) {
-        fprintf(stderr, "{\"error\": \"Failed to create temporary JSON array\"}\n"); // 如果创建临时 JSON 数组失败，则输出错误信息，释放 JSON 对象，结束语句，关闭数据库，并返回错误码
+		// 如果创建临时 JSON 数组失败，则输出错误信息，释放 JSON 对象，结束语句，关闭数据库，并返回错误码
         cJSON_Delete(root);
         sqlite3_finalize(stmt);
         sqlite3_close(db);
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to create temporary JSON array");
+        send_json_response(500, "Internal Server Error", response_json);
         return 1;
     }
 
@@ -200,24 +227,31 @@ int handle_get_messages() {
         // 为当前消息创建一个 cJSON 对象
         cJSON *message_obj = cJSON_CreateObject();
         if (message_obj == NULL) {
-            fprintf(stderr, "{\"error\": \"Failed to create JSON object for message\"}\n"); // 如果创建消息 JSON 对象失败，则输出错误信息，释放所有 JSON 对象，结束语句，关闭数据库，并返回错误码
+			// 如果创建消息 JSON 对象失败，则输出错误信息，释放所有 JSON 对象，结束语句，关闭数据库，并返回错误码
             cJSON_Delete(root);
             cJSON_Delete(temp_array);
             sqlite3_finalize(stmt);
             sqlite3_close(db);
+            cJSON *response_json = cJSON_CreateObject();
+            cJSON_AddStringToObject(response_json, "status", "error");
+            cJSON_AddStringToObject(response_json, "message", "Failed to create JSON object for message");
+            send_json_response(500, "Internal Server Error", response_json);
             return 1;
         }
 
         // 从查询结果中获取消息的各个字段
-        const char *id = (const char *)sqlite3_column_text(stmt, 0); // 消息 ID
+        const long long id_raw = sqlite3_column_int64(stmt, 0); // 消息 ID
         long long timestamp_raw = sqlite3_column_int64(stmt, 1); // 时间戳 (long long 类型以确保兼容性)
         const char *ip = (const char *)sqlite3_column_text(stmt, 2); // 用户 IP 地址
         const char *username = (const char *)sqlite3_column_text(stmt, 3); // 用户名
         const char *message = (const char *)sqlite3_column_text(stmt, 4); // 消息内容
 
+        char id_str[20];
+        snprintf(id_str, sizeof(id_str), "%lld", id_raw);
+
         // 将消息字段添加到 JSON 对象中
-        cJSON_AddStringToObject(message_obj, "id", id);
-        cJSON_AddNumberToObject(message_obj, "timestamp", timestamp_raw); // 直接添加数字类型的时间戳
+        cJSON_AddStringToObject(message_obj, "id", id_str);
+        cJSON_AddNumberToObject(message_obj, "timestamp", timestamp_raw);
         cJSON_AddStringToObject(message_obj, "ip", ip);
         cJSON_AddStringToObject(message_obj, "username", username);
         cJSON_AddStringToObject(message_obj, "message", message);
@@ -228,32 +262,20 @@ int handle_get_messages() {
 
     // 将消息从临时数组（逆序）添加到根数组（正序），实现按时间顺序排列
     for (int i = cJSON_GetArraySize(temp_array) - 1; i >= 0; i--) {
-        cJSON_AddItemToArray(root, cJSON_DetachItemFromArray(temp_array, i));
+        cJSON_AddItemToArray(data_array, cJSON_DetachItemFromArray(temp_array, i));
     }
     cJSON_Delete(temp_array); // 释放临时数组的内存
 
     sqlite3_finalize(stmt); // 结束 SQLite 预处理语句
     sqlite3_close(db); // 关闭 SQLite 数据库连接
 
-    // 将根 JSON 数组打印为未格式化的 JSON 字符串
-    char *json_output = cJSON_PrintUnformatted(root);
-    if (json_output != NULL) {
-        printf("%s\n", json_output); // 输出 JSON 字符串到标准输出
-        free(json_output); // 释放 JSON 字符串内存
-    } else {
-        fprintf(stderr, "{\"error\": \"Failed to print JSON\"}\n"); // 如果 JSON 打印失败，则输出错误信息
-    }
-
-    cJSON_Delete(root); // 释放根 JSON 数组的内存
+    send_json_response(200, "OK", root); // 返回响应并释放根 JSON 数组的内存
 
     return 0; // 程序成功执行
 }
 
-// 处理 POST 请求的函数 (原 post_message.c 的核心逻辑)
+// 处理 POST 请求的函数
 int handle_post_message() {
-    // 设置 CGI 响应头，指示内容类型为纯文本
-    printf("Content-type: text/plain\r\n\r\n");
-
     // 获取 POST 请求的内容长度
     char *content_length_str = getenv("CONTENT_LENGTH");
     int content_length = 0;
@@ -263,15 +285,22 @@ int handle_post_message() {
 
     // 检查内容长度是否有效
     if (content_length <= 0 || content_length > MAX_POST_DATA_SIZE) {
-        printf("Error: Invalid or missing POST data length.\n"); // 如果内容长度无效，则打印错误信息
-        return 1; // 返回错误码
+		// 如果内容长度无效，则打印错误信息
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Invalid or missing POST data length.");
+        send_json_response(400, "Bad Request", response_json);
+        return 1;
     }
 
-    // 读取 POST 数据到缓冲区
-    char post_data[MAX_POST_DATA_SIZE + 1]; // +1 用于存储空字符
+    char post_data[MAX_POST_DATA_SIZE + 1];
     if (fread(post_data, 1, content_length, stdin) != content_length) {
-        printf("Error: Failed to read POST data from stdin.\n"); // 如果读取失败，则打印错误信息
-        return 1; // 返回错误码
+		 // 如果读取失败，则打印错误信息
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to read POST data from stdin.");
+        send_json_response(500, "Internal Server Error", response_json);
+        return 1;
     }
     post_data[content_length] = '\0'; // 确保字符串以空字符结尾
 
@@ -304,8 +333,12 @@ int handle_post_message() {
 
     // 检查消息内容是否为空
     if (strlen(message) == 0) {
-        printf("Error: Message is empty.\n"); // 如果消息为空，则打印错误信息
-        return 1; // 返回错误码
+		// 如果消息为空，则打印错误信息
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Message is empty.");
+        send_json_response(400, "Bad Request", response_json);
+        return 1;
     }
 
     // 检查消息内容是否超出最大长度，如果超出则截断
@@ -326,8 +359,12 @@ int handle_post_message() {
     // 打开 SQLite 数据库连接
     rc = sqlite3_open(DB_PATH, &db);
     if (rc) {
-        fprintf(stderr, "Error: Can't open database: %s\n", sqlite3_errmsg(db)); // 如果打开数据库失败，则打印错误信息
-        return 1; // 返回错误码
+		// 如果打开数据库失败，则打印错误信息
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Can't open database.");
+        send_json_response(500, "Internal Server Error", response_json);
+        return 1;
     }
 
     // ========== 身份验证逻辑开始 ==========
@@ -336,8 +373,11 @@ int handle_post_message() {
         const char *sql_check_user = "SELECT password FROM users WHERE username = ?;";
         rc = sqlite3_prepare_v2(db, sql_check_user, -1, &stmt, 0);
         if (rc != SQLITE_OK) {
-            fprintf(stderr, "Error: Failed to prepare user check statement: %s\n", sqlite3_errmsg(db));
             sqlite3_close(db);
+            cJSON *response_json = cJSON_CreateObject();
+            cJSON_AddStringToObject(response_json, "status", "error");
+            cJSON_AddStringToObject(response_json, "message", "Failed to prepare user check statement.");
+            send_json_response(500, "Internal Server Error", response_json);
             return 1;
         }
         sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
@@ -350,7 +390,10 @@ int handle_post_message() {
             if (strlen(password) == 0 || strcmp(password, stored_password) != 0) {
                 sqlite3_finalize(stmt);
                 sqlite3_close(db);
-                printf("Error: Incorrect password for user '%s'.\n", username);
+                cJSON *response_json = cJSON_CreateObject();
+                cJSON_AddStringToObject(response_json, "status", "error");
+                cJSON_AddStringToObject(response_json, "message", "Incorrect password.");
+                send_json_response(400, "Bad Request", response_json);
                 return 1;
             }
         } else if (rc == SQLITE_DONE) {
@@ -360,25 +403,42 @@ int handle_post_message() {
                 const char *sql_insert_user = "INSERT INTO users (username, password) VALUES (?, ?);";
                 rc = sqlite3_prepare_v2(db, sql_insert_user, -1, &stmt, 0);
                 if (rc != SQLITE_OK) {
-                    fprintf(stderr, "Error: Failed to prepare user insert statement: %s\n", sqlite3_errmsg(db));
                     sqlite3_close(db);
+                    cJSON *response_json = cJSON_CreateObject();
+                    cJSON_AddStringToObject(response_json, "status", "error");
+                    cJSON_AddStringToObject(response_json, "message", "Failed to prepare user insert statement.");
+                    send_json_response(500, "Internal Server Error", response_json);
                     return 1;
                 }
                 sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
                 sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
                 rc = sqlite3_step(stmt);
                 if (rc != SQLITE_DONE) {
-                    fprintf(stderr, "Error: Failed to execute user insert statement: %s\n", sqlite3_errmsg(db));
                     sqlite3_finalize(stmt);
                     sqlite3_close(db);
+                    cJSON *response_json = cJSON_CreateObject();
+                    cJSON_AddStringToObject(response_json, "status", "error");
+                    cJSON_AddStringToObject(response_json, "message", "Failed to execute user insert statement.");
+                    send_json_response(500, "Internal Server Error", response_json);
                     return 1;
                 }
+            } else {
+                sqlite3_finalize(stmt);
+                sqlite3_close(db);
+                cJSON *response_json = cJSON_CreateObject();
+                cJSON_AddStringToObject(response_json, "status", "error");
+                cJSON_AddStringToObject(response_json, "message", "User not found, and no password provided for registration.");
+                send_json_response(400, "Bad Request", response_json);
+                return 1;
             }
         } else {
             // 查询出错
-            fprintf(stderr, "Error: User check failed: %s\n", sqlite3_errmsg(db));
             sqlite3_finalize(stmt);
             sqlite3_close(db);
+            cJSON *response_json = cJSON_CreateObject();
+            cJSON_AddStringToObject(response_json, "status", "error");
+            cJSON_AddStringToObject(response_json, "message", "User check failed.");
+            send_json_response(500, "Internal Server Error", response_json);
             return 1;
         }
         sqlite3_finalize(stmt); // 结束语句
@@ -399,9 +459,13 @@ int handle_post_message() {
     // 准备 SQL 插入语句
     rc = sqlite3_prepare_v2(db, sql_insert, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "Error: Failed to prepare insert statement: %s\n", sqlite3_errmsg(db)); // 如果准备失败，则打印错误信息
+		// 如果准备失败，则打印错误信息
         sqlite3_close(db); // 关闭数据库
-        return 1; // 返回错误码
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to prepare insert statement.");
+        send_json_response(500, "Internal Server Error", response_json);
+        return 1;
     }
 
     // 绑定参数到插入语句
@@ -413,10 +477,14 @@ int handle_post_message() {
     // 执行插入语句
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
-        fprintf(stderr, "Error: Failed to execute insert statement: %s\n", sqlite3_errmsg(db)); // 如果执行失败，则打印错误信息
+		// 如果执行失败，则打印错误信息
         sqlite3_finalize(stmt); // 结束语句
         sqlite3_close(db); // 关闭数据库
-        return 1; // 返回错误码
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to execute insert statement.");
+        send_json_response(500, "Internal Server Error", response_json);
+        return 1;
     }
     sqlite3_finalize(stmt); // 结束语句
 
@@ -425,25 +493,37 @@ int handle_post_message() {
     // 准备 SQL 删除语句
     rc = sqlite3_prepare_v2(db, sql_delete_old, -1, &stmt, 0);
     if (rc != SQLITE_OK) {
-        fprintf(stderr, "Error: Failed to prepare delete statement: %s\n", sqlite3_errmsg(db)); // 如果准备失败，则打印错误信息
+		// 如果准备失败，则打印错误信息
         sqlite3_close(db); // 关闭数据库
-        return 1; // 返回错误码
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to prepare delete statement.");
+        send_json_response(500, "Internal Server Error", response_json);
+        return 1;
     }
     sqlite3_bind_int(stmt, 1, MAX_MESSAGES_POST); // 绑定要保留的消息数量
 
     // 执行删除语句
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
-        fprintf(stderr, "Error: Failed to execute delete statement: %s\n", sqlite3_errmsg(db)); // 如果执行失败，则打印错误信息
+		// 如果执行失败，则打印错误信息
         sqlite3_finalize(stmt); // 结束语句
         sqlite3_close(db); // 关闭数据库
-        return 1; // 返回错误码
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to execute delete statement.");
+        send_json_response(500, "Internal Server Error", response_json);
+        return 1;
     }
     sqlite3_finalize(stmt); // 结束语句
 
     sqlite3_close(db); // 关闭数据库连接
 
-    printf("OK: Message posted and old messages cleaned.\n"); // 打印成功信息
+	// 打印成功信息
+    cJSON *response_json = cJSON_CreateObject();
+    cJSON_AddStringToObject(response_json, "status", "success");
+    cJSON_AddStringToObject(response_json, "message", "Message posted and old messages cleaned.");
+    send_json_response(200, "OK", response_json);
 
     return 0; // 程序成功执行
 }
@@ -451,16 +531,20 @@ int handle_post_message() {
 int main() {
     // 在处理请求之前，先初始化数据库
     if (init_database() != 0) {
-        printf("Content-type: text/plain\r\n\r\n");
-        printf("Error: Failed to initialize database.\n");
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Failed to initialize database.");
+        send_json_response(500, "Internal Server Error", response_json);
         return 1;
     }
 
-    char *request_method = getenv("REQUEST_METHOD"); // 获取请求方法
+    char *request_method = getenv("REQUEST_METHOD");
 
     if (request_method == NULL) {
-        printf("Content-type: text/plain\r\n\r\n");
-        printf("Error: REQUEST_METHOD not set.\n");
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "REQUEST_METHOD not set.");
+        send_json_response(500, "Internal Server Error", response_json);
         return 1;
     }
 
@@ -469,8 +553,10 @@ int main() {
     } else if (strcmp(request_method, "POST") == 0) {
         return handle_post_message();
     } else {
-        printf("Content-type: text/plain\r\n\r\n");
-        printf("Error: Unsupported request method: %s\n", request_method);
+        cJSON *response_json = cJSON_CreateObject();
+        cJSON_AddStringToObject(response_json, "status", "error");
+        cJSON_AddStringToObject(response_json, "message", "Unsupported request method.");
+        send_json_response(405, "Method Not Allowed", response_json);
         return 1;
     }
 }
