@@ -42,6 +42,42 @@ void url_decode(char *dst, const char *src) {
     *dst++ = '\0'; // 字符串以空字符结尾
 }
 
+// 新增函数：解析 HTTP Cookie 字符串，获取用户名和密码
+void parse_cookies(const char *cookie_str, char *username, size_t username_size, char *password, size_t password_size) {
+    if (!cookie_str) return;
+
+    char *cookie_copy = strdup(cookie_str);
+    if (!cookie_copy) return;
+
+    char *token;
+    char *rest = cookie_copy;
+
+    while ((token = strtok_r(rest, ";", &rest))) {
+        // Trim leading spaces
+        while (*token == ' ') token++;
+
+        char *key = token;
+        char *value = strchr(token, '=');
+
+        if (value) {
+            *value = '\0';
+            value++;
+
+            char decoded_value[MAX_MESSAGE_LENGTH + 1];
+            url_decode(decoded_value, value);
+
+            if (strcmp(key, "username") == 0) {
+                strncpy(username, decoded_value, username_size - 1);
+                username[username_size - 1] = '\0';
+            } else if (strcmp(key, "password") == 0) {
+                strncpy(password, decoded_value, password_size - 1);
+                password[password_size - 1] = '\0';
+            }
+        }
+    }
+    free(cookie_copy);
+}
+
 // 函数：初始化数据库
 int init_database() {
     sqlite3 *db;
@@ -73,9 +109,24 @@ int init_database() {
                                    "username TEXT,"
                                    "message TEXT"
                                    ");";
+                                   
+    // 创建 users 表的 SQL 语句，用于存储用户名和密码
+    const char *sql_create_users_table = "CREATE TABLE users ("
+                                         "username TEXT PRIMARY KEY,"
+                                         "password TEXT"
+                                         ");";
 
     // 执行 SQL 语句
     rc = sqlite3_exec(db, sql_create_table, 0, 0, &err_msg);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        return 1;
+    }
+
+    // 执行创建 users 表的 SQL 语句
+    rc = sqlite3_exec(db, sql_create_users_table, 0, 0, &err_msg);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "SQL error: %s\n", err_msg);
         sqlite3_free(err_msg);
@@ -225,13 +276,14 @@ int handle_post_message() {
     post_data[content_length] = '\0'; // 确保字符串以空字符结尾
 
     char username[256] = ""; // 用户名缓冲区
+    char password[256] = ""; // 密码缓冲区
     char message[MAX_MESSAGE_LENGTH + 1] = ""; // 消息内容缓冲区
     char decoded_value[MAX_MESSAGE_LENGTH + 1]; // 用于存储解码后的值
 
     char *token; // 用于 strtok_r 的令牌
     char *rest = post_data; // 用于 strtok_r 的剩余字符串指针
 
-    // 解析 URL 编码的 POST 数据（格式为 key1=value1&key2=value2...）
+    // 解析 POST 数据，只获取消息内容
     while ((token = strtok_r(rest, "&", &rest))) { // 按 '&' 分割键值对
         char *key = token;
         char *value = strchr(token, '='); // 查找 '=' 分隔符
@@ -239,17 +291,16 @@ int handle_post_message() {
             *value = '\0'; // 在 '=' 处截断，将 key 字符串空终止
             value++;       // 移动指针到值的开始
             url_decode(decoded_value, value); // 解码值
-
-            // 根据键名判断是用户名还是消息
-            if (strcmp(key, "username") == 0) {
-                strncpy(username, decoded_value, sizeof(username) - 1); // 复制解码后的用户名
-                username[sizeof(username) - 1] = '\0'; // 确保空终止
-            } else if (strcmp(key, "message") == 0) {
+            if (strcmp(key, "message") == 0) {
                 strncpy(message, decoded_value, sizeof(message) - 1); // 复制解码后的消息
                 message[sizeof(message) - 1] = '\0'; // 确保空终止
             }
         }
     }
+    
+    // 从环境变量中获取 Cookie，并解析用户名和密码
+    const char *cookie_str = getenv("HTTP_COOKIE");
+    parse_cookies(cookie_str, username, sizeof(username), password, sizeof(password));
 
     // 检查消息内容是否为空
     if (strlen(message) == 0) {
@@ -262,6 +313,11 @@ int handle_post_message() {
         message[MAX_MESSAGE_LENGTH] = '\0'; // 截断消息
         printf("Warning: Message truncated to %d characters.\n", MAX_MESSAGE_LENGTH); // 打印警告信息
     }
+    
+    // 如果没有从Cookie中获取到用户名，则使用默认值
+    if (strlen(username) == 0) {
+        strncpy(username, "anonymous", sizeof(username));
+    }
 
     sqlite3 *db; // SQLite 数据库连接对象
     sqlite3_stmt *stmt; // SQLite 预处理语句对象
@@ -273,6 +329,61 @@ int handle_post_message() {
         fprintf(stderr, "Error: Can't open database: %s\n", sqlite3_errmsg(db)); // 如果打开数据库失败，则打印错误信息
         return 1; // 返回错误码
     }
+
+    // ========== 身份验证逻辑开始 ==========
+    if (strcmp(username, "anonymous") != 0) {
+        // 尝试从 users 表中查询用户
+        const char *sql_check_user = "SELECT password FROM users WHERE username = ?;";
+        rc = sqlite3_prepare_v2(db, sql_check_user, -1, &stmt, 0);
+        if (rc != SQLITE_OK) {
+            fprintf(stderr, "Error: Failed to prepare user check statement: %s\n", sqlite3_errmsg(db));
+            sqlite3_close(db);
+            return 1;
+        }
+        sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+        
+        // 检查用户是否存在
+        rc = sqlite3_step(stmt);
+        if (rc == SQLITE_ROW) {
+            // 用户已存在，检查密码是否匹配
+            const char *stored_password = (const char *)sqlite3_column_text(stmt, 0);
+            if (strlen(password) == 0 || strcmp(password, stored_password) != 0) {
+                sqlite3_finalize(stmt);
+                sqlite3_close(db);
+                printf("Error: Incorrect password for user '%s'.\n", username);
+                return 1;
+            }
+        } else if (rc == SQLITE_DONE) {
+            // 用户不存在，如果是新注册则插入
+            if (strlen(password) > 0) {
+                sqlite3_finalize(stmt); // 结束查询语句
+                const char *sql_insert_user = "INSERT INTO users (username, password) VALUES (?, ?);";
+                rc = sqlite3_prepare_v2(db, sql_insert_user, -1, &stmt, 0);
+                if (rc != SQLITE_OK) {
+                    fprintf(stderr, "Error: Failed to prepare user insert statement: %s\n", sqlite3_errmsg(db));
+                    sqlite3_close(db);
+                    return 1;
+                }
+                sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+                sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
+                rc = sqlite3_step(stmt);
+                if (rc != SQLITE_DONE) {
+                    fprintf(stderr, "Error: Failed to execute user insert statement: %s\n", sqlite3_errmsg(db));
+                    sqlite3_finalize(stmt);
+                    sqlite3_close(db);
+                    return 1;
+                }
+            }
+        } else {
+            // 查询出错
+            fprintf(stderr, "Error: User check failed: %s\n", sqlite3_errmsg(db));
+            sqlite3_finalize(stmt);
+            sqlite3_close(db);
+            return 1;
+        }
+        sqlite3_finalize(stmt); // 结束语句
+    }
+    // ========== 身份验证逻辑结束 ==========
 
     // 获取用户 IP 地址（优先从 Cloudflare 代理头获取，其次从 REMOTE_ADDR 获取）
     const char *user_ip = getenv("HTTP_CF_CONNECTING_IP");

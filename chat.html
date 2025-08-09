@@ -70,6 +70,8 @@
 	<div id="username-input">
 		<label for="username">昵称:</label>
 		<input type="text" id="username" placeholder="输入昵称" value="anonymous">
+		<label for="password">密码 (可选):</label>
+		<input type="password" id="password" placeholder="设置或输入密码">
 	</div>
 
 	<div id="notification-setting">
@@ -89,8 +91,10 @@
 		const chatWindow = document.getElementById('chat-window');
 		const messageInput = document.getElementById('message-input');
 		const usernameInput = document.getElementById('username');
+		const passwordInput = document.getElementById('password'); // 获取密码输入框
 		const sendButton = document.querySelector('.input-form button');
 		const enableNotificationsCheckbox = document.getElementById('enable-notifications');
+		const MAX_FRONTEND_MESSAGE_LENGTH = 512;
 
 		// 存储当前聊天窗口中已显示消息的ID，用于避免重复添加
 		const displayedMessageIds = new Set();
@@ -107,11 +111,16 @@
 		if (savedNotificationSetting === 'true') {
 			enableNotificationsCheckbox.checked = true;
 		}
+		
+		// 页面加载时尝试从 Cookie 读取密码
+		const savedPassword = getCookie('password');
+		if (savedPassword) {
+			passwordInput.value = savedPassword;
+		}
 
 		// 页面加载后立即触发一次 fetchMessages，但避免通知
 		window.onload = async () => {
 			await fetchMessages(); // 首次加载，先获取消息
-			//isInitialLoad = false; // 首次加载完成后，将标记设置为 false
 			setInterval(fetchMessages, 5000); // 然后启动定时刷新
 		};
 
@@ -192,17 +201,46 @@
 			currentNotifications = []; // 清空数组
 		}
 
+		// 封装设置Cookie的函数
+		function setCookie(name, value, days) {
+			let expires = "";
+			if (days) {
+				const date = new Date();
+				date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+				expires = "; expires=" + date.toUTCString();
+			}
+			document.cookie = name + "=" + (value || "") + expires + "; path=/";
+		}
+		
+		// 封装获取Cookie的函数
+		function getCookie(name) {
+			const nameEQ = name + "=";
+			const ca = document.cookie.split(';');
+			for(let i = 0; i < ca.length; i++) {
+				let c = ca[i];
+				while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+				if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+			}
+			return null;
+		}
+
 		async function sendMessage() {
 			let message = messageInput.value.trim();
 			const username = usernameInput.value.trim() || 'anonymous';
-
-			// 在发送消息时保存用户名到 localStorage
-			localStorage.setItem('chatUsername', username);
-
-			const MAX_FRONTEND_MESSAGE_LENGTH = 512;
+			const password = passwordInput.value.trim();
 
 			if (message === '') {
 				return;
+			}
+
+			// 在发送消息时保存用户名和密码到 localStorage 和 Cookie
+			localStorage.setItem('chatUsername', username);
+			setCookie('username', username, 7);
+			if (password) {
+				setCookie('password', password, 7);
+			} else {
+				// 如果没有提供密码，清除密码cookie
+				setCookie('password', '', -1); 
 			}
 
 			messageInput.disabled = true;
@@ -218,7 +256,6 @@
 			try {
 				for (const part of messagesToSend) {
 					const formData = new URLSearchParams();
-					formData.append('username', username);
 					formData.append('message', part);
 
 					const response = await fetch('./cgi-bin/chat_handler.cgi', {
@@ -260,7 +297,7 @@
 			}
 		});
 
-		// 监听 username 输入框的变化，实时保存用户名
+		// 监听输入框的变化，实时保存用户名
 		usernameInput.addEventListener('input', function() {
 			localStorage.setItem('chatUsername', usernameInput.value.trim());
 		});
