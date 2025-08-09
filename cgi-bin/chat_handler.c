@@ -42,7 +42,7 @@ void url_decode(char *dst, const char *src) {
 	*dst++ = '\0'; // 字符串以空字符结尾
 }
 
-// 新增函数：解析 HTTP Cookie 字符串，获取用户名和密码
+// 函数：解析 HTTP Cookie 字符串，获取用户名和密码
 void parse_cookies(const char *cookie_str, char *username, size_t username_size, char *password, size_t password_size) {
 	if (!cookie_str) return;
 
@@ -78,7 +78,7 @@ void parse_cookies(const char *cookie_str, char *username, size_t username_size,
 	free(cookie_copy);
 }
 
-// 新增函数：发送统一的 JSON 响应
+// 函数：发送统一的 JSON 响应
 void send_json_response(int http_status, const char *status_text, cJSON *json_body) {
 	printf("Status: %d %s\r\n", http_status, status_text);
 	printf("Content-type: application/json\r\n\r\n");
@@ -274,7 +274,7 @@ int handle_get_messages() {
 	return 0; // 程序成功执行
 }
 
-// 处理 POST 请求的函数
+// 处理 POST 请求的函数（原先的聊天消息处理）
 int handle_post_message() {
 	// 获取 POST 请求的内容长度
 	char *content_length_str = getenv("CONTENT_LENGTH");
@@ -344,7 +344,7 @@ int handle_post_message() {
 	// 检查消息内容是否超出最大长度，如果超出则截断
 	if (strlen(message) > MAX_MESSAGE_LENGTH) {
 		message[MAX_MESSAGE_LENGTH] = '\0'; // 截断消息
-		printf("Warning: Message truncated to %d characters.\n", MAX_MESSAGE_LENGTH); // 打印警告信息
+		fprintf(stderr, "Warning: Message truncated to %d characters.\n", MAX_MESSAGE_LENGTH); // 打印警告信息
 	}
 	
 	// 如果没有从Cookie中获取到用户名，则使用默认值
@@ -396,35 +396,6 @@ int handle_post_message() {
 				send_json_response(400, "Bad Request", response_json);
 				return 1;
 			}
-		} else if (rc == SQLITE_DONE) {
-			// 用户不存在
-			if (strlen(password) > 0) {
-				// 如果提供了密码，则将其注册为新用户
-				sqlite3_finalize(stmt); // 结束查询语句
-				const char *sql_insert_user = "INSERT INTO users (username, password) VALUES (?, ?);";
-				rc = sqlite3_prepare_v2(db, sql_insert_user, -1, &stmt, 0);
-				if (rc != SQLITE_OK) {
-					sqlite3_close(db);
-					cJSON *response_json = cJSON_CreateObject();
-					cJSON_AddStringToObject(response_json, "status", "error");
-					cJSON_AddStringToObject(response_json, "message", "Failed to prepare user insert statement.");
-					send_json_response(500, "Internal Server Error", response_json);
-					return 1;
-				}
-				sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
-				sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
-				rc = sqlite3_step(stmt);
-				if (rc != SQLITE_DONE) {
-					sqlite3_finalize(stmt);
-					sqlite3_close(db);
-					cJSON *response_json = cJSON_CreateObject();
-					cJSON_AddStringToObject(response_json, "status", "error");
-					cJSON_AddStringToObject(response_json, "message", "Failed to execute user insert statement.");
-					send_json_response(500, "Internal Server Error", response_json);
-					return 1;
-				}
-			}
-			// 如果用户不存在且未提供密码，则不进行注册，直接继续
 		} else {
 			// 查询出错
 			sqlite3_finalize(stmt);
@@ -522,6 +493,262 @@ int handle_post_message() {
 	return 0; // 程序成功执行
 }
 
+// 新增：处理用户管理请求
+int handle_user_management(const char *action, const char *request_method) {
+	sqlite3 *db;
+	sqlite3_stmt *stmt;
+	int rc;
+
+	rc = sqlite3_open(DB_PATH, &db);
+	if (rc) {
+		cJSON *response_json = cJSON_CreateObject();
+		cJSON_AddStringToObject(response_json, "status", "error");
+		cJSON_AddStringToObject(response_json, "message", "Can't open database for user management.");
+		send_json_response(500, "Internal Server Error", response_json);
+		return 1;
+	}
+	
+	// 获取 POST/PATCH/DELETE 数据
+	char post_data[MAX_POST_DATA_SIZE + 1] = "";
+	char *content_length_str = getenv("CONTENT_LENGTH");
+	int content_length = 0;
+	if (content_length_str != NULL) {
+		content_length = atoi(content_length_str);
+	}
+	if (content_length > 0 && content_length <= MAX_POST_DATA_SIZE) {
+		fread(post_data, 1, content_length, stdin);
+		post_data[content_length] = '\0';
+	}
+
+	char username[256] = "";
+	char password[256] = "";
+	char new_password[256] = "";
+
+	// 解析表单数据
+	char *token;
+	char *rest = post_data;
+	char decoded_value[MAX_MESSAGE_LENGTH + 1];
+	while ((token = strtok_r(rest, "&", &rest))) {
+		char *key = token;
+		char *value = strchr(token, '=');
+		if (value) {
+			*value = '\0';
+			value++;
+			url_decode(decoded_value, value);
+			if (strcmp(key, "username") == 0) {
+				strncpy(username, decoded_value, sizeof(username) - 1);
+			} else if (strcmp(key, "password") == 0) {
+				strncpy(password, decoded_value, sizeof(password) - 1);
+			} else if (strcmp(key, "new_password") == 0) {
+				strncpy(new_password, decoded_value, sizeof(new_password) - 1);
+			}
+		}
+	}
+	
+	// 如果是 DELETE 请求，则从 Cookie 中获取用户名和密码
+	if (strcmp(request_method, "DELETE") == 0) {
+		const char *cookie_str = getenv("HTTP_COOKIE");
+		parse_cookies(cookie_str, username, sizeof(username), password, sizeof(password));
+	}
+
+
+	// 注册 (POST action=register)
+	if (strcmp(request_method, "POST") == 0 && strcmp(action, "register") == 0) {
+		if (strlen(username) == 0 || strlen(password) == 0) {
+			cJSON *response_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(response_json, "status", "error");
+			cJSON_AddStringToObject(response_json, "message", "Username and password are required.");
+			send_json_response(400, "Bad Request", response_json);
+			return 1;
+		}
+
+		const char *sql_check_user = "SELECT username FROM users WHERE username = ?;";
+		rc = sqlite3_prepare_v2(db, sql_check_user, -1, &stmt, 0);
+		sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			sqlite3_finalize(stmt);
+			sqlite3_close(db);
+			cJSON *response_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(response_json, "status", "error");
+			cJSON_AddStringToObject(response_json, "message", "User already exists.");
+			send_json_response(409, "Conflict", response_json);
+			return 1;
+		}
+		sqlite3_finalize(stmt);
+		
+		const char *sql_insert_user = "INSERT INTO users (username, password) VALUES (?, ?);";
+		rc = sqlite3_prepare_v2(db, sql_insert_user, -1, &stmt, 0);
+		sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+		sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
+		rc = sqlite3_step(stmt);
+		if (rc != SQLITE_DONE) {
+			sqlite3_finalize(stmt);
+			sqlite3_close(db);
+			cJSON *response_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(response_json, "status", "error");
+			cJSON_AddStringToObject(response_json, "message", "Failed to register user.");
+			send_json_response(500, "Internal Server Error", response_json);
+			return 1;
+		}
+		sqlite3_finalize(stmt);
+
+		sqlite3_close(db);
+		cJSON *response_json = cJSON_CreateObject();
+		cJSON_AddStringToObject(response_json, "status", "success");
+		cJSON_AddStringToObject(response_json, "message", "User registered successfully.");
+		send_json_response(200, "OK", response_json);
+		return 0;
+	}
+
+	// 登录 (POST action=login)
+	if (strcmp(request_method, "POST") == 0 && strcmp(action, "login") == 0) {
+		if (strlen(username) == 0 || strlen(password) == 0) {
+			cJSON *response_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(response_json, "status", "error");
+			cJSON_AddStringToObject(response_json, "message", "Username and password are required.");
+			send_json_response(400, "Bad Request", response_json);
+			return 1;
+		}
+		const char *sql_check_user = "SELECT password FROM users WHERE username = ?;";
+		rc = sqlite3_prepare_v2(db, sql_check_user, -1, &stmt, 0);
+		sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			const char *stored_password = (const char *)sqlite3_column_text(stmt, 0);
+			if (strcmp(password, stored_password) == 0) {
+				sqlite3_finalize(stmt);
+				sqlite3_close(db);
+				cJSON *response_json = cJSON_CreateObject();
+				cJSON_AddStringToObject(response_json, "status", "success");
+				cJSON_AddStringToObject(response_json, "message", "Login successful.");
+				send_json_response(200, "OK", response_json);
+				return 0;
+			}
+		}
+		sqlite3_finalize(stmt);
+		sqlite3_close(db);
+		cJSON *response_json = cJSON_CreateObject();
+		cJSON_AddStringToObject(response_json, "status", "error");
+		cJSON_AddStringToObject(response_json, "message", "Invalid username or password.");
+		send_json_response(401, "Unauthorized", response_json);
+		return 1;
+	}
+	
+	// 修改密码 (PATCH action=update)
+	if (strcmp(request_method, "PATCH") == 0 && strcmp(action, "update") == 0) {
+		// 从 POST 数据中解析出 username, old_password, new_password
+		char temp_username[256] = "";
+		char temp_old_password[256] = "";
+		char temp_new_password[256] = "";
+		char *token;
+		char *rest_p = post_data;
+		while ((token = strtok_r(rest_p, "&", &rest_p))) {
+			char *key = token;
+			char *value = strchr(token, '=');
+			if (value) {
+				*value = '\0';
+				value++;
+				url_decode(decoded_value, value);
+				if (strcmp(key, "username") == 0) {
+					strncpy(temp_username, decoded_value, sizeof(temp_username) - 1);
+				} else if (strcmp(key, "old_password") == 0) {
+					strncpy(temp_old_password, decoded_value, sizeof(temp_old_password) - 1);
+				} else if (strcmp(key, "new_password") == 0) {
+					strncpy(temp_new_password, decoded_value, sizeof(temp_new_password) - 1);
+				}
+			}
+		}
+		
+		if (strlen(temp_username) == 0 || strlen(temp_old_password) == 0 || strlen(temp_new_password) == 0) {
+			cJSON *response_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(response_json, "status", "error");
+			cJSON_AddStringToObject(response_json, "message", "Username, old password, and new password are required.");
+			send_json_response(400, "Bad Request", response_json);
+			return 1;
+		}
+
+		const char *sql_check_user = "SELECT password FROM users WHERE username = ?;";
+		rc = sqlite3_prepare_v2(db, sql_check_user, -1, &stmt, 0);
+		sqlite3_bind_text(stmt, 1, temp_username, -1, SQLITE_STATIC);
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			const char *stored_password = (const char *)sqlite3_column_text(stmt, 0);
+			if (strcmp(temp_old_password, stored_password) == 0) {
+				sqlite3_finalize(stmt);
+				
+				const char *sql_update = "UPDATE users SET password = ? WHERE username = ?;";
+				rc = sqlite3_prepare_v2(db, sql_update, -1, &stmt, 0);
+				sqlite3_bind_text(stmt, 1, temp_new_password, -1, SQLITE_STATIC);
+				sqlite3_bind_text(stmt, 2, temp_username, -1, SQLITE_STATIC);
+				if (sqlite3_step(stmt) == SQLITE_DONE) {
+					sqlite3_finalize(stmt);
+					sqlite3_close(db);
+					cJSON *response_json = cJSON_CreateObject();
+					cJSON_AddStringToObject(response_json, "status", "success");
+					cJSON_AddStringToObject(response_json, "message", "Password updated successfully.");
+					send_json_response(200, "OK", response_json);
+					return 0;
+				}
+			}
+		}
+		sqlite3_finalize(stmt);
+		sqlite3_close(db);
+		cJSON *response_json = cJSON_CreateObject();
+		cJSON_AddStringToObject(response_json, "status", "error");
+		cJSON_AddStringToObject(response_json, "message", "Incorrect username or password.");
+		send_json_response(401, "Unauthorized", response_json);
+		return 1;
+	}
+	
+	// 删除账户 (DELETE action=delete)
+	if (strcmp(request_method, "DELETE") == 0 && strcmp(action, "delete") == 0) {
+		if (strlen(username) == 0 || strlen(password) == 0) {
+			cJSON *response_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(response_json, "status", "error");
+			cJSON_AddStringToObject(response_json, "message", "Username and password are required.");
+			send_json_response(400, "Bad Request", response_json);
+			return 1;
+		}
+
+		const char *sql_check_user = "SELECT password FROM users WHERE username = ?;";
+		rc = sqlite3_prepare_v2(db, sql_check_user, -1, &stmt, 0);
+		sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			const char *stored_password = (const char *)sqlite3_column_text(stmt, 0);
+			if (strcmp(password, stored_password) == 0) {
+				sqlite3_finalize(stmt);
+
+				const char *sql_delete = "DELETE FROM users WHERE username = ?;";
+				rc = sqlite3_prepare_v2(db, sql_delete, -1, &stmt, 0);
+				sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+				if (sqlite3_step(stmt) == SQLITE_DONE) {
+					sqlite3_finalize(stmt);
+					sqlite3_close(db);
+					cJSON *response_json = cJSON_CreateObject();
+					cJSON_AddStringToObject(response_json, "status", "success");
+					cJSON_AddStringToObject(response_json, "message", "User deleted successfully.");
+					send_json_response(200, "OK", response_json);
+					return 0;
+				}
+			}
+		}
+		sqlite3_finalize(stmt);
+		sqlite3_close(db);
+		cJSON *response_json = cJSON_CreateObject();
+		cJSON_AddStringToObject(response_json, "status", "error");
+		cJSON_AddStringToObject(response_json, "message", "Invalid username or password.");
+		send_json_response(401, "Unauthorized", response_json);
+		return 1;
+	}
+	
+	// 其他未支持的用户管理请求
+	sqlite3_close(db);
+	cJSON *response_json = cJSON_CreateObject();
+	cJSON_AddStringToObject(response_json, "status", "error");
+	cJSON_AddStringToObject(response_json, "message", "Unsupported user management action or method.");
+	send_json_response(405, "Method Not Allowed", response_json);
+	return 1;
+}
+
+
 int main() {
 	// 在处理请求之前，先初始化数据库
 	if (init_database() != 0) {
@@ -533,6 +760,7 @@ int main() {
 	}
 
 	char *request_method = getenv("REQUEST_METHOD");
+	char *query_string = getenv("QUERY_STRING");
 
 	if (request_method == NULL) {
 		cJSON *response_json = cJSON_CreateObject();
@@ -542,10 +770,55 @@ int main() {
 		return 1;
 	}
 
+	char action[256] = "";
+	if (query_string != NULL) {
+		char *action_param = strstr(query_string, "action=");
+		if (action_param) {
+			char *start = action_param + 7;
+			char *end = strchr(start, '&');
+			if (end) {
+				strncpy(action, start, end - start);
+				action[end - start] = '\0';
+			} else {
+				strncpy(action, start, sizeof(action) - 1);
+			}
+		}
+	}
+
+	// 根据请求方法和 action 参数进行路由
 	if (strcmp(request_method, "GET") == 0) {
+		// 获取信息
 		return handle_get_messages();
 	} else if (strcmp(request_method, "POST") == 0) {
-		return handle_post_message();
+		if (strcmp(action, "register") == 0 || strcmp(action, "login") == 0) {
+			// 注册或登录
+			return handle_user_management(action, request_method);
+		} else {
+			// 发送消息
+			return handle_post_message();
+		}
+	} else if (strcmp(request_method, "PATCH") == 0) {
+		if (strcmp(action, "update") == 0) {
+			// 更改密码
+			return handle_user_management(action, request_method);
+		} else {
+			cJSON *response_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(response_json, "status", "error");
+			cJSON_AddStringToObject(response_json, "message", "Unsupported PATCH action.");
+			send_json_response(405, "Method Not Allowed", response_json);
+			return 1;
+		}
+	} else if (strcmp(request_method, "DELETE") == 0) {
+		if (strcmp(action, "delete") == 0) {
+			// 删除账户
+			return handle_user_management(action, request_method);
+		} else {
+			cJSON *response_json = cJSON_CreateObject();
+			cJSON_AddStringToObject(response_json, "status", "error");
+			cJSON_AddStringToObject(response_json, "message", "Unsupported DELETE action.");
+			send_json_response(405, "Method Not Allowed", response_json);
+			return 1;
+		}
 	} else {
 		cJSON *response_json = cJSON_CreateObject();
 		cJSON_AddStringToObject(response_json, "status", "error");

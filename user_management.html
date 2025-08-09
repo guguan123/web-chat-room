@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>账户管理</title>
+	<link href="https://guguan.us.kg/dark.css" rel="stylesheet" media="(prefers-color-scheme: dark)">
+	<style>
+		body {
+			font-family: sans-serif;
+			padding: 20px;
+		}
+		.form-section {
+			margin-bottom: 20px;
+			padding: 15px;
+			border: 1px solid #ccc;
+			border-radius: 5px;
+		}
+		.form-section h2 {
+			margin-top: 0;
+		}
+		label, input, button {
+			display: block;
+			width: 100%;
+			box-sizing: border-box;
+			margin-bottom: 10px;
+		}
+		input {
+			padding: 8px;
+		}
+		button {
+			padding: 10px;
+			border: none;
+			color: white;
+			cursor: pointer;
+		}
+		#register-button {
+			background-color: #28a745;
+		}
+		#login-button {
+			background-color: #007bff;
+		}
+		#update-button {
+			background-color: #ffc107;
+		}
+		#delete-button {
+			background-color: #dc3545;
+		}
+	</style>
+</head>
+<body>
+	<h1>账户管理</h1>
+	<a href="chat.html">返回聊天室</a>
+
+	<div class="form-section">
+		<h2>注册新账户</h2>
+		<form id="register-form">
+			<label for="reg-username">昵称:</label>
+			<input type="text" id="reg-username" name="username" required>
+			<label for="reg-password">密码:</label>
+			<input type="password" id="reg-password" name="password" required>
+			<button type="submit" id="register-button">注册并登录</button>
+		</form>
+	</div>
+
+	<div class="form-section">
+		<h2>登录现有账户</h2>
+		<form id="login-form">
+			<label for="login-username">昵称:</label>
+			<input type="text" id="login-username" name="username" required>
+			<label for="login-password">密码:</label>
+			<input type="password" id="login-password" name="password" required>
+			<button type="submit" id="login-button">登录</button>
+		</form>
+	</div>
+
+	<div class="form-section">
+		<h2>修改密码</h2>
+		<p>使用当前登录的昵称。</p>
+		<form id="update-form">
+			<label for="update-new-password">新密码:</label>
+			<input type="password" id="update-new-password" name="new_password" required>
+			<button type="submit" id="update-button">修改密码</button>
+		</form>
+	</div>
+
+	<div class="form-section">
+		<h2>删除账户</h2>
+		<p>使用当前登录的昵称。</p>
+		<button id="delete-button">删除账户</button>
+	</div>
+
+	<script>
+		function setCookie(name, value, days) {
+			let expires = "";
+			if (days) {
+				const date = new Date();
+				date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+				expires = "; expires=" + date.toUTCString();
+			}
+			document.cookie = name + "=" + encodeURIComponent(value || "") + expires + "; path=/; SameSite=Lax";
+		}
+		
+		function getCookie(name) {
+			const nameEQ = name + "=";
+			const ca = document.cookie.split(';');
+			for(let i = 0; i < ca.length; i++) {
+				let c = ca[i];
+				while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+				if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+			}
+			return null;
+		}
+
+		document.getElementById('register-form').addEventListener('submit', async (e) => {
+			e.preventDefault();
+			const username = e.target.elements['reg-username'].value;
+			const password = e.target.elements['reg-password'].value;
+			
+			const formData = new URLSearchParams();
+			formData.append('username', username);
+			formData.append('password', password);
+
+			try {
+				const response = await fetch('./cgi-bin/chat_handler.cgi?action=register', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded'
+					},
+					body: formData.toString()
+				});
+				const result = await response.json();
+				if (response.ok) {
+					setCookie('username', username, 7);
+					setCookie('password', password, 7);
+					alert('注册成功！正在跳转至聊天室。');
+					window.location.href = 'chat.html';
+				} else {
+					alert('注册失败: ' + result.message);
+				}
+			} catch (error) {
+				alert('网络错误，注册失败。');
+			}
+		});
+
+		document.getElementById('login-form').addEventListener('submit', async (e) => {
+			e.preventDefault();
+			const username = e.target.elements['login-username'].value;
+			const password = e.target.elements['login-password'].value;
+			
+			const formData = new URLSearchParams();
+			formData.append('username', username);
+			formData.append('password', password);
+
+			try {
+				const response = await fetch('./cgi-bin/chat_handler.cgi?action=login', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded'
+					},
+					body: formData.toString()
+				});
+				const result = await response.json();
+				if (response.ok) {
+					setCookie('username', username, 7);
+					setCookie('password', password, 7);
+					alert('登录成功！正在跳转至聊天室。');
+					window.location.href = 'chat.html';
+				} else {
+					alert('登录失败: ' + result.message);
+				}
+			} catch (error) {
+				alert('网络错误，登录失败。');
+			}
+		});
+
+		document.getElementById('update-form').addEventListener('submit', async (e) => {
+			e.preventDefault();
+			const newPassword = e.target.elements['update-new-password'].value;
+			const username = getCookie('username');
+			const oldPassword = getCookie('password');
+
+			if (!username || !oldPassword || username === 'anonymous') {
+				alert('请先登录。');
+				return;
+			}
+			
+			const formData = new URLSearchParams();
+			formData.append('username', username);
+			formData.append('old_password', oldPassword);
+			formData.append('new_password', newPassword);
+
+			try {
+				const response = await fetch('./cgi-bin/chat_handler.cgi?action=update', {
+					method: 'PATCH',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded'
+					},
+					body: formData.toString()
+				});
+				const result = await response.json();
+				if (response.ok) {
+					setCookie('password', newPassword, 7);
+					alert('密码修改成功！');
+				} else {
+					alert('修改密码失败: ' + result.message);
+				}
+			} catch (error) {
+				alert('网络错误，修改密码失败。');
+			}
+		});
+
+		document.getElementById('delete-button').addEventListener('click', async () => {
+			const username = getCookie('username');
+			if (!username || username === 'anonymous' || !confirm(`确定要删除账户 ${username} 吗？此操作不可逆！`)) {
+				return;
+			}
+			
+			try {
+				const response = await fetch(`./cgi-bin/chat_handler.cgi?action=delete`, {
+					method: 'DELETE',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded',
+						'Cookie': document.cookie
+					}
+				});
+				const result = await response.json();
+				if (response.ok) {
+					setCookie('username', '', -1); // 删除Cookie
+					setCookie('password', '', -1);
+					alert('账户已成功删除。');
+					window.location.href = 'user_management.html';
+				} else {
+					alert('删除账户失败: ' + result.message);
+				}
+			} catch (error) {
+				alert('网络错误，删除账户失败。');
+			}
+		});
+	</script>
+</body>
+</html>
