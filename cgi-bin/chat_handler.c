@@ -392,13 +392,14 @@ int handle_post_message() {
 				sqlite3_close(db);
 				cJSON *response_json = cJSON_CreateObject();
 				cJSON_AddStringToObject(response_json, "status", "error");
-				cJSON_AddStringToObject(response_json, "message", "Incorrect password.");
+				cJSON_AddStringToObject(response_json, "message", "Incorrect password or password not provided for existing user.");
 				send_json_response(400, "Bad Request", response_json);
 				return 1;
 			}
 		} else if (rc == SQLITE_DONE) {
-			// 用户不存在，如果是新注册则插入
+			// 用户不存在
 			if (strlen(password) > 0) {
+				// 如果提供了密码，则将其注册为新用户
 				sqlite3_finalize(stmt); // 结束查询语句
 				const char *sql_insert_user = "INSERT INTO users (username, password) VALUES (?, ?);";
 				rc = sqlite3_prepare_v2(db, sql_insert_user, -1, &stmt, 0);
@@ -422,15 +423,8 @@ int handle_post_message() {
 					send_json_response(500, "Internal Server Error", response_json);
 					return 1;
 				}
-			} else {
-				sqlite3_finalize(stmt);
-				sqlite3_close(db);
-				cJSON *response_json = cJSON_CreateObject();
-				cJSON_AddStringToObject(response_json, "status", "error");
-				cJSON_AddStringToObject(response_json, "message", "User not found, and no password provided for registration.");
-				send_json_response(400, "Bad Request", response_json);
-				return 1;
 			}
+			// 如果用户不存在且未提供密码，则不进行注册，直接继续
 		} else {
 			// 查询出错
 			sqlite3_finalize(stmt);
