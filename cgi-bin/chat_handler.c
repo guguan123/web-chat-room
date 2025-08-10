@@ -535,12 +535,40 @@ int handle_user_management(const char *action, const char *request_method) {
 			*value = '\0';
 			value++;
 			url_decode(decoded_value, value);
+
 			if (strcmp(key, "username") == 0) {
-				snprintf(username, sizeof(username), "%s", decoded_value);
+				if (strlen(decoded_value) >= sizeof(username)) {
+					// 如果用户名过长，发送错误响应并退出
+					cJSON *response_json = cJSON_CreateObject();
+					cJSON_AddStringToObject(response_json, "status", "error");
+					cJSON_AddStringToObject(response_json, "message", "Username is too long.");
+					send_json_response(400, "Bad Request", response_json);
+					sqlite3_close(db);
+					return 1;
+				}
+				strncpy(username, decoded_value, sizeof(username) - 1);
 			} else if (strcmp(key, "password") == 0) {
-				snprintf(password, sizeof(password), "%s", decoded_value);
+				if (strlen(decoded_value) >= sizeof(password)) {
+					// 密码过长，发送错误响应并退出
+					cJSON *response_json = cJSON_CreateObject();
+					cJSON_AddStringToObject(response_json, "status", "error");
+					cJSON_AddStringToObject(response_json, "message", "Password is too long.");
+					send_json_response(400, "Bad Request", response_json);
+					sqlite3_close(db);
+					return 1;
+				}
+				strncpy(password, decoded_value, sizeof(password) - 1);
 			} else if (strcmp(key, "new_password") == 0) {
-				snprintf(new_password, sizeof(new_password), "%s", decoded_value);
+				if (strlen(decoded_value) >= sizeof(new_password)) {
+					// 新密码过长，发送错误响应并退出
+					cJSON *response_json = cJSON_CreateObject();
+					cJSON_AddStringToObject(response_json, "status", "error");
+					cJSON_AddStringToObject(response_json, "message", "New password is too long.");
+					send_json_response(400, "Bad Request", response_json);
+					sqlite3_close(db);
+					return 1;
+				}
+				strncpy(new_password, decoded_value, sizeof(new_password) - 1);
 			}
 		}
 	}
