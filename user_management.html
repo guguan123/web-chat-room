@@ -46,6 +46,9 @@
 		#delete-button {
 			background-color: #dc3545;
 		}
+		#logout-button {
+			background-color: #6c757d;
+		}
 	</style>
 </head>
 <body>
@@ -91,6 +94,8 @@
 			<h2>删除账户</h2>
 			<button id="delete-button">删除账户</button>
 		</div>
+		
+		<button id="logout-button">退出登录</button>
 	</div>
 
 	<script>
@@ -105,7 +110,7 @@
 		}
 		
 		function getCookie(name) {
-			const nameEQ = "=" + name + "=";
+			const nameEQ = name + "=";
 			const ca = document.cookie.split(';');
 			for(let i = 0; i < ca.length; i++) {
 				let c = ca[i];
@@ -186,7 +191,7 @@
 					setCookie('username', username, 7);
 					setCookie('password', password, 7);
 					alert('登录成功！');
-					checkLoginStatus(); // 登录成功后更新显示状态
+					checkLoginStatus();
 				} else {
 					alert('登录失败: ' + result.message);
 				}
@@ -257,6 +262,13 @@
 			} catch (error) {
 				alert('网络错误，删除账户失败。');
 			}
+		});
+
+		document.getElementById('logout-button').addEventListener('click', () => {
+			setCookie('username', '', -1); // 删除用户名cookie
+			setCookie('password', '', -1); // 删除密码cookie
+			alert('您已成功退出登录。');
+			checkLoginStatus(); // 更新页面显示状态
 		});
 	</script>
 </body>
