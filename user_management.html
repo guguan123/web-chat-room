@@ -57,31 +57,21 @@
 
 	<div id="unauthenticated-section">
 		<div class="form-section">
-			<h2>注册新账户</h2>
-			<form id="register-form">
-				<label for="reg-username">昵称:</label>
-				<input type="text" id="reg-username" name="username" required>
-				<label for="reg-password">密码:</label>
-				<input type="password" id="reg-password" name="password" required>
-				<button type="submit" id="register-button">注册并登录</button>
-			</form>
-		</div>
-
-		<div class="form-section">
-			<h2>登录现有账户</h2>
-			<form id="login-form">
-				<label for="login-username">昵称:</label>
-				<input type="text" id="login-username" name="username" required>
-				<label for="login-password">密码:</label>
-				<input type="password" id="login-password" name="password" required>
-				<button type="submit" id="login-button">登录</button>
+			<h2>账户管理</h2>
+			<form id="combined-form">
+				<label for="username">昵称:</label>
+				<input type="text" id="username" name="username" required>
+				<label for="password">密码:</label>
+				<input type="password" id="password" name="password" required>
+				<button type="button" id="register-button">注册</button>
+				<button type="button" id="login-button">登录</button>
 			</form>
 		</div>
 	</div>
 
 	<div id="authenticated-section" style="display: none;">
 		<p id="welcome-message"></p>
-        <button id="logout-button">退出登录</button>
+		<button id="logout-button">退出登录</button>
 
 		<div class="form-section">
 			<h2>修改密码</h2>
@@ -135,11 +125,11 @@
 
 		checkLoginStatus();
 
-		document.getElementById('register-form').addEventListener('submit', async (e) => {
+		document.getElementById('register-button').addEventListener('click', async (e) => {
 			e.preventDefault();
-			const username = e.target.elements['reg-username'].value;
-			const password = e.target.elements['reg-password'].value;
-			
+			const username = document.getElementById('username').value;
+			const password = document.getElementById('password').value;
+
 			const formData = new URLSearchParams();
 			formData.append('username', username);
 			formData.append('password', password);
@@ -166,11 +156,11 @@
 			}
 		});
 
-		document.getElementById('login-form').addEventListener('submit', async (e) => {
+		document.getElementById('login-button').addEventListener('click', async (e) => {
 			e.preventDefault();
-			const username = e.target.elements['login-username'].value;
-			const password = e.target.elements['login-password'].value;
-			
+			const username = document.getElementById('username').value;
+			const password = document.getElementById('password').value;
+
 			const formData = new URLSearchParams();
 			formData.append('username', username);
 			formData.append('password', password);
