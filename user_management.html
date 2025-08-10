@@ -52,42 +52,45 @@
 	<h1>账户管理</h1>
 	<a href="chat.html">返回聊天室</a>
 
-	<div class="form-section">
-		<h2>注册新账户</h2>
-		<form id="register-form">
-			<label for="reg-username">昵称:</label>
-			<input type="text" id="reg-username" name="username" required>
-			<label for="reg-password">密码:</label>
-			<input type="password" id="reg-password" name="password" required>
-			<button type="submit" id="register-button">注册并登录</button>
-		</form>
+	<div id="unauthenticated-section">
+		<div class="form-section">
+			<h2>注册新账户</h2>
+			<form id="register-form">
+				<label for="reg-username">昵称:</label>
+				<input type="text" id="reg-username" name="username" required>
+				<label for="reg-password">密码:</label>
+				<input type="password" id="reg-password" name="password" required>
+				<button type="submit" id="register-button">注册并登录</button>
+			</form>
+		</div>
+
+		<div class="form-section">
+			<h2>登录现有账户</h2>
+			<form id="login-form">
+				<label for="login-username">昵称:</label>
+				<input type="text" id="login-username" name="username" required>
+				<label for="login-password">密码:</label>
+				<input type="password" id="login-password" name="password" required>
+				<button type="submit" id="login-button">登录</button>
+			</form>
+		</div>
 	</div>
 
-	<div class="form-section">
-		<h2>登录现有账户</h2>
-		<form id="login-form">
-			<label for="login-username">昵称:</label>
-			<input type="text" id="login-username" name="username" required>
-			<label for="login-password">密码:</label>
-			<input type="password" id="login-password" name="password" required>
-			<button type="submit" id="login-button">登录</button>
-		</form>
-	</div>
+	<div id="authenticated-section" style="display: none;">
+		<p id="welcome-message"></p>
+		<div class="form-section">
+			<h2>修改密码</h2>
+			<form id="update-form">
+				<label for="update-new-password">新密码:</label>
+				<input type="password" id="update-new-password" name="new_password" required>
+				<button type="submit" id="update-button">修改密码</button>
+			</form>
+		</div>
 
-	<div class="form-section">
-		<h2>修改密码</h2>
-		<p>使用当前登录的昵称。</p>
-		<form id="update-form">
-			<label for="update-new-password">新密码:</label>
-			<input type="password" id="update-new-password" name="new_password" required>
-			<button type="submit" id="update-button">修改密码</button>
-		</form>
-	</div>
-
-	<div class="form-section">
-		<h2>删除账户</h2>
-		<p>使用当前登录的昵称。</p>
-		<button id="delete-button">删除账户</button>
+		<div class="form-section">
+			<h2>删除账户</h2>
+			<button id="delete-button">删除账户</button>
+		</div>
 	</div>
 
 	<script>
@@ -102,7 +105,7 @@
 		}
 		
 		function getCookie(name) {
-			const nameEQ = name + "=";
+			const nameEQ = "=" + name + "=";
 			const ca = document.cookie.split(';');
 			for(let i = 0; i < ca.length; i++) {
 				let c = ca[i];
@@ -111,6 +114,24 @@
 			}
 			return null;
 		}
+
+		function checkLoginStatus() {
+			const username = getCookie('username');
+			const unauthenticatedSection = document.getElementById('unauthenticated-section');
+			const authenticatedSection = document.getElementById('authenticated-section');
+			const welcomeMessage = document.getElementById('welcome-message');
+
+			if (username && username !== 'anonymous') {
+				unauthenticatedSection.style.display = 'none';
+				authenticatedSection.style.display = 'block';
+				welcomeMessage.textContent = `欢迎，${username}！您已登录。`;
+			} else {
+				unauthenticatedSection.style.display = 'block';
+				authenticatedSection.style.display = 'none';
+			}
+		}
+
+		checkLoginStatus();
 
 		document.getElementById('register-form').addEventListener('submit', async (e) => {
 			e.preventDefault();
@@ -164,8 +185,8 @@
 				if (response.ok) {
 					setCookie('username', username, 7);
 					setCookie('password', password, 7);
-					alert('登录成功！正在跳转至聊天室。');
-					window.location.href = 'chat.html';
+					alert('登录成功！');
+					checkLoginStatus(); // 登录成功后更新显示状态
 				} else {
 					alert('登录失败: ' + result.message);
 				}
