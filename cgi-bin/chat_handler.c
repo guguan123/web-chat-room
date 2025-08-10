@@ -5,7 +5,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <sys/stat.h> // 用于检查文件是否存在
-#include <cJSON.h>
+#include <cjson/cJSON.h>
 
 #define DB_PATH "/tmp/chat_messages.db"
 #define MAX_MESSAGES_GET 50 // 用于GET请求限制获取的消息数量
