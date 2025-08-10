@@ -634,7 +634,7 @@ int handle_user_management(const char *action, const char *request_method) {
 	}
 	
 	// 修改密码 (PATCH action=update)
-	if (strcmp(request_method, "PATCH") == 0 && strcmp(action, "update") == 0) {
+	if (strcmp(request_method, "POST") == 0 && strcmp(action, "update") == 0) {
 		// 从 POST 数据中解析出 username, old_password, new_password
 		char temp_username[256] = "";
 		char temp_old_password[256] = "";
@@ -790,23 +790,12 @@ int main() {
 		// 获取信息
 		return handle_get_messages();
 	} else if (strcmp(request_method, "POST") == 0) {
-		if (strcmp(action, "register") == 0 || strcmp(action, "login") == 0) {
+		if (strcmp(action, "register") == 0 || strcmp(action, "login") == 0 || strcmp(action, "update") == 0) {
 			// 注册或登录
 			return handle_user_management(action, request_method);
 		} else {
 			// 发送消息
 			return handle_post_message();
-		}
-	} else if (strcmp(request_method, "PATCH") == 0) {
-		if (strcmp(action, "update") == 0) {
-			// 更改密码
-			return handle_user_management(action, request_method);
-		} else {
-			cJSON *response_json = cJSON_CreateObject();
-			cJSON_AddStringToObject(response_json, "status", "error");
-			cJSON_AddStringToObject(response_json, "message", "Unsupported PATCH action.");
-			send_json_response(405, "Method Not Allowed", response_json);
-			return 1;
 		}
 	} else if (strcmp(request_method, "DELETE") == 0) {
 		if (strcmp(action, "delete") == 0) {
