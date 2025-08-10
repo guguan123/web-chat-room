@@ -221,12 +221,6 @@
 
 		async function sendMessage() {
 			const username = getCookie('username') || 'anonymous';
-			if (username === 'anonymous') {
-				alert('请先登录或注册一个昵称。');
-				window.location.href = 'user_management.html';
-				return;
-			}
-			
 			let message = messageInput.value.trim();
 
 			if (message === '') {
