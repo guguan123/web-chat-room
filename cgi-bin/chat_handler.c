@@ -536,11 +536,11 @@ int handle_user_management(const char *action, const char *request_method) {
 			value++;
 			url_decode(decoded_value, value);
 			if (strcmp(key, "username") == 0) {
-				strncpy(username, decoded_value, sizeof(username) - 1);
+				snprintf(username, sizeof(username), "%s", decoded_value);
 			} else if (strcmp(key, "password") == 0) {
-				strncpy(password, decoded_value, sizeof(password) - 1);
+				snprintf(password, sizeof(password), "%s", decoded_value);
 			} else if (strcmp(key, "new_password") == 0) {
-				strncpy(new_password, decoded_value, sizeof(new_password) - 1);
+				snprintf(new_password, sizeof(new_password), "%s", decoded_value);
 			}
 		}
 	}
