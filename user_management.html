@@ -63,9 +63,9 @@
 			<h2>账户管理</h2>
 			<form id="combined-form">
 				<label for="username">昵称:</label>
-				<input type="text" id="username" name="username" required>
+				<input type="text" id="username" name="username" maxlength="128" required>
 				<label for="password">密码:</label>
-				<input type="password" id="password" name="password" required>
+				<input type="password" id="password" name="password" maxlength="128" required>
 				<button type="button" id="register-button">注册</button>
 				<button type="button" id="login-button">登录</button>
 			</form>
@@ -80,7 +80,7 @@
 			<h2>修改密码</h2>
 			<form id="update-form">
 				<label for="update-new-password">新密码:</label>
-				<input type="password" id="update-new-password" name="new_password" required>
+				<input type="password" id="update-new-password" name="new_password" maxlength="128" required>
 				<button type="submit" id="update-button">修改密码</button>
 			</form>
 		</div>
@@ -149,8 +149,7 @@
 				if (response.ok) {
 					setCookie('username', username, 7);
 					setCookie('password', password, 7);
-					alert('注册成功！正在跳转至聊天室。');
-					window.location.href = 'chat.html';
+					alert('注册成功！');
 				} else {
 					alert('注册失败: ' + result.message);
 				}
