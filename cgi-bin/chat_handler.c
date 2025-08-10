@@ -633,32 +633,9 @@ int handle_user_management(const char *action, const char *request_method) {
 		return 1;
 	}
 	
-	// 修改密码 (PATCH action=update)
+	// 修改密码 (POST action=update)
 	if (strcmp(request_method, "POST") == 0 && strcmp(action, "update") == 0) {
-		// 从 POST 数据中解析出 username, old_password, new_password
-		char temp_username[256] = "";
-		char temp_old_password[256] = "";
-		char temp_new_password[256] = "";
-		char *token;
-		char *rest_p = post_data;
-		while ((token = strtok_r(rest_p, "&", &rest_p))) {
-			char *key = token;
-			char *value = strchr(token, '=');
-			if (value) {
-				*value = '\0';
-				value++;
-				url_decode(decoded_value, value);
-				if (strcmp(key, "username") == 0) {
-					strncpy(temp_username, decoded_value, sizeof(temp_username) - 1);
-				} else if (strcmp(key, "old_password") == 0) {
-					strncpy(temp_old_password, decoded_value, sizeof(temp_old_password) - 1);
-				} else if (strcmp(key, "new_password") == 0) {
-					strncpy(temp_new_password, decoded_value, sizeof(temp_new_password) - 1);
-				}
-			}
-		}
-		
-		if (strlen(temp_username) == 0 || strlen(temp_old_password) == 0 || strlen(temp_new_password) == 0) {
+		if (strlen(username) == 0 || strlen(password) == 0 || strlen(new_password) == 0) {
 			cJSON *response_json = cJSON_CreateObject();
 			cJSON_AddStringToObject(response_json, "status", "error");
 			cJSON_AddStringToObject(response_json, "message", "Username, old password, and new password are required.");
@@ -668,16 +645,16 @@ int handle_user_management(const char *action, const char *request_method) {
 
 		const char *sql_check_user = "SELECT password FROM users WHERE username = ?;";
 		rc = sqlite3_prepare_v2(db, sql_check_user, -1, &stmt, 0);
-		sqlite3_bind_text(stmt, 1, temp_username, -1, SQLITE_STATIC);
+		sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
 		if (sqlite3_step(stmt) == SQLITE_ROW) {
 			const char *stored_password = (const char *)sqlite3_column_text(stmt, 0);
-			if (strcmp(temp_old_password, stored_password) == 0) {
+			if (strcmp(password, stored_password) == 0) {
 				sqlite3_finalize(stmt);
 				
 				const char *sql_update = "UPDATE users SET password = ? WHERE username = ?;";
 				rc = sqlite3_prepare_v2(db, sql_update, -1, &stmt, 0);
-				sqlite3_bind_text(stmt, 1, temp_new_password, -1, SQLITE_STATIC);
-				sqlite3_bind_text(stmt, 2, temp_username, -1, SQLITE_STATIC);
+				sqlite3_bind_text(stmt, 1, new_password, -1, SQLITE_STATIC);
+				sqlite3_bind_text(stmt, 2, username, -1, SQLITE_STATIC);
 				if (sqlite3_step(stmt) == SQLITE_DONE) {
 					sqlite3_finalize(stmt);
 					sqlite3_close(db);
